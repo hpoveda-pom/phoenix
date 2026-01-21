@@ -71,9 +71,9 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
         $debug_info[] = "select_GroupBy construido: '$select_GroupBy'";
     }
 
-    // Procesar SumBy (similar a GroupBy)
+    // Procesar SumBy (similar a GroupBy, permitiendo múltiples campos)
     $select_SumBy = '';
-    $sumby_field = null;
+    $sumby_fields = array();
     if ($array_sumby && !empty($array_sumby)) {
         if (!isset($GLOBALS['debug_info'])) {
             $GLOBALS['debug_info'] = [];
@@ -113,25 +113,32 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
             
             $debug_info[] = "Campo SumBy determinado: '$field_name'";
             
-            // Guardar el campo para usar en el SELECT (solo el primero por ahora)
-            if ($sumby_field === null) {
-                $sumby_field = $field_name;
+            // Agregar el campo a la lista (permitir múltiples campos)
+            if (!in_array($field_name, $sumby_fields)) {
+                $sumby_fields[] = $field_name;
             }
         }
         
-        // Construir el SELECT con SUM (solo si se encontró un campo válido)
-        if ($sumby_field) {
-            // Usar backticks para proteger el nombre del campo
-            $sumby_field_escaped = "`" . $sumby_field . "`";
-            // Hacer SUM del campo (similar a COUNT en GroupBy, pero sumando)
-            $select_SumBy = "SUM(
-                CASE 
-                    WHEN tb." . $sumby_field_escaped . " IS NULL OR tb." . $sumby_field_escaped . " = '' THEN 0
-                    WHEN tb." . $sumby_field_escaped . " REGEXP '^[0-9]+\.?[0-9]*$' THEN CAST(tb." . $sumby_field_escaped . " AS DECIMAL(20,2))
-                    ELSE 0
-                END
-            ) AS Suma_" . $sumby_field;
+        // Construir el SELECT con SUM para cada campo
+        if (!empty($sumby_fields)) {
+            $sumby_selects = array();
+            foreach ($sumby_fields as $sumby_field) {
+                // Usar backticks para proteger el nombre del campo
+                $sumby_field_escaped = "`" . $sumby_field . "`";
+                // Hacer SUM del campo (similar a COUNT en GroupBy, pero sumando)
+                // Usar backticks para el alias porque contiene espacios y paréntesis
+                $sumby_alias = "`Suma (" . $sumby_field . ")`";
+                $sumby_selects[] = "SUM(
+                    CASE 
+                        WHEN tb." . $sumby_field_escaped . " IS NULL OR tb." . $sumby_field_escaped . " = '' THEN 0
+                        WHEN tb." . $sumby_field_escaped . " REGEXP '^[0-9]+\.?[0-9]*$' THEN CAST(tb." . $sumby_field_escaped . " AS DECIMAL(20,2))
+                        ELSE 0
+                    END
+                ) AS " . $sumby_alias;
+            }
+            $select_SumBy = implode(', ', $sumby_selects);
             $debug_info[] = "SumBy SQL construido: '$select_SumBy'";
+            $debug_info[] = "Campos SumBy procesados: " . implode(', ', $sumby_fields);
         }
     }
 
@@ -332,10 +339,23 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
                         $expected_headers = array_map('trim', $expected_headers);
                         $expected_headers[] = 'Cantidad';
                         if (!empty($select_SumBy)) {
-                            // Extraer el nombre del campo SumBy del alias
-                            if (preg_match('/AS\s+(\w+)/i', $select_SumBy, $matches)) {
-                                $expected_headers[] = $matches[1];
-                                $debug_info[] = "Campo SumBy detectado: " . $matches[1];
+                            // Extraer el nombre del campo SumBy del alias (puede ser `Suma (campo)` o Suma_campo)
+                            // Buscar todos los aliases que empiecen con Suma
+                            if (preg_match_all('/AS\s+[`"]?Suma\s*\(([^)]+)\)[`"]?/i', $select_SumBy, $matches)) {
+                                foreach ($matches[0] as $match) {
+                                    // Extraer el nombre completo del alias
+                                    if (preg_match('/AS\s+[`"]?([^`"]+)[`"]?/i', $match, $alias_match)) {
+                                        $expected_headers[] = $alias_match[1];
+                                    }
+                                }
+                            } elseif (preg_match_all('/AS\s+(\w+Suma_\w+)/i', $select_SumBy, $matches)) {
+                                // Fallback para formato antiguo Suma_campo
+                                foreach ($matches[1] as $match) {
+                                    $expected_headers[] = $match;
+                                }
+                            }
+                            if (!empty($expected_headers)) {
+                                $debug_info[] = "Campos SumBy detectados: " . implode(', ', array_slice($expected_headers, -count($matches[0])));
                             }
                         }
                         $headers = $expected_headers;
@@ -364,13 +384,25 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
                     $expected_headers = explode(',', $select_GroupBy);
                     $expected_headers = array_map('trim', $expected_headers);
                     $expected_headers[] = 'Cantidad';
-                    if (!empty($select_SumBy)) {
-                        // Extraer el nombre del campo SumBy del alias
-                        if (preg_match('/AS\s+(\w+)/i', $select_SumBy, $matches)) {
-                            $expected_headers[] = $matches[1];
-                            $debug_info[] = "Campo SumBy detectado: " . $matches[1];
+                        if (!empty($select_SumBy)) {
+                            // Extraer el nombre del campo SumBy del alias (formato: `Suma (campo)`)
+                            // Buscar todos los aliases que empiecen con Suma
+                            if (preg_match_all('/AS\s+[`"]?Suma\s*\(([^)]+)\)[`"]?/i', $select_SumBy, $matches)) {
+                                foreach ($matches[0] as $match) {
+                                    // Extraer el nombre completo del alias incluyendo paréntesis
+                                    if (preg_match('/AS\s+[`"]?([^`"]+)[`"]?/i', $match, $alias_match)) {
+                                        $expected_headers[] = $alias_match[1];
+                                    }
+                                }
+                                $debug_info[] = "Campos SumBy detectados: " . implode(', ', array_slice($expected_headers, -count($matches[0])));
+                            } elseif (preg_match_all('/AS\s+(\w+Suma_\w+)/i', $select_SumBy, $matches)) {
+                                // Fallback para formato antiguo Suma_campo
+                                foreach ($matches[1] as $match) {
+                                    $expected_headers[] = $match;
+                                }
+                                $debug_info[] = "Campos SumBy detectados (formato antiguo): " . implode(', ', array_slice($expected_headers, -count($matches[1])));
+                            }
                         }
-                    }
                     $headers = $expected_headers;
                     $debug_info[] = "Headers esperados (de estructura): " . implode(', ', $headers);
                 }

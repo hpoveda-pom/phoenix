@@ -143,9 +143,20 @@ body[data-bs-theme="dark"] .g-recaptcha iframe {
   text-align: center !important;
 }
 
+/* Alinear a la derecha columnas de montos - header y celdas */
+#reportsTable th.text-end,
+#reportsTable td.text-end {
+  text-align: right !important;
+}
+
 /* Asegurar que el header de Cantidad esté centrado */
 #reportsTable thead th.text-center {
   text-align: center !important;
+}
+
+/* Asegurar que los headers de montos estén alineados a la derecha */
+#reportsTable thead th.text-end {
+  text-align: right !important;
 }
 
 /* Centrar contenido del header de Cantidad (incluyendo botones) */
@@ -153,6 +164,14 @@ body[data-bs-theme="dark"] .g-recaptcha iframe {
 #reportsTable thead th.text-center .btn {
   text-align: center !important;
   margin: 0 auto;
+  display: block;
+}
+
+/* Alinear a la derecha contenido del header de montos (incluyendo botones) */
+#reportsTable thead th.text-end button,
+#reportsTable thead th.text-end .btn {
+  text-align: right !important;
+  margin-left: auto;
   display: block;
 }
 

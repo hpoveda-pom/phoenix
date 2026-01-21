@@ -43,7 +43,7 @@ require_once('views/template_menu_items.php');
     <link href="assets/css/user-rtl.min.css" type="text/css" rel="stylesheet" id="user-style-rtl" disabled="true">
     <link href="assets/css/user.min.css" type="text/css" rel="stylesheet" id="user-style-default">
     <script src="assets/js/phoenixIsRTL.js?v=1.0.8"></script>
-    <link href="assets/css/custom.css?v=1.0.16" rel="stylesheet">
+    <link href="assets/css/custom.css?v=1.0.17" rel="stylesheet">
     <!-- <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script> -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js"></script>
 

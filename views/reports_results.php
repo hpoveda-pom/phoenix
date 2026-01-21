@@ -396,25 +396,49 @@ $(document).ready(function() {
         "dom": 'rtip',
         "columns": columns,
         "columnDefs": (function() {
-            // Encontrar el índice de la columna "Cantidad"
+            var columnDefs = [];
+            
+            // Encontrar índices de columnas especiales
             var cantidadIndex = -1;
+            var sumaIndices = [];
+            
             for (var i = 0; i < headers.length; i++) {
-                if (headers[i] && headers[i].toLowerCase() === 'cantidad') {
+                var header = headers[i] ? headers[i].toLowerCase() : '';
+                
+                // Columna "Cantidad" - centrada
+                if (header === 'cantidad') {
                     cantidadIndex = i;
-                    break;
+                }
+                
+                // Columnas de montos (Suma (*) o campos con monto/precio/total/importe) - alineadas a la derecha
+                if (header.indexOf('suma (') === 0 || 
+                    header.indexOf('suma_') === 0 ||
+                    header.indexOf('monto') !== -1 || 
+                    header.indexOf('precio') !== -1 ||
+                    header.indexOf('total') !== -1 ||
+                    header.indexOf('importe') !== -1) {
+                    sumaIndices.push(i);
                 }
             }
             
+            // Aplicar configuración a "Cantidad"
             if (cantidadIndex >= 0) {
-                return [
-                    {
-                        "targets": [cantidadIndex],
-                        "width": "auto",
-                        "className": "text-center"
-                    }
-                ];
+                columnDefs.push({
+                    "targets": [cantidadIndex],
+                    "width": "auto",
+                    "className": "text-center"
+                });
             }
-            return [];
+            
+            // Aplicar configuración a columnas de montos
+            if (sumaIndices.length > 0) {
+                columnDefs.push({
+                    "targets": sumaIndices,
+                    "className": "text-end"
+                });
+            }
+            
+            return columnDefs;
         })()
     });
 });

@@ -596,8 +596,9 @@ if ($action == "datatables") {
             $value = number_format((float)$value, 0, '.', ',');
           }
           
-          // Manejar campos Suma_*: si es NULL, 0 (cuando todos eran NULL), o no numérico, mostrar N/A
-          if (strpos(strtolower($header), 'suma_') === 0) {
+          // Manejar campos Suma (*) o Suma_*: si es NULL, 0 (cuando todos eran NULL), o no numérico, mostrar N/A
+          $header_lower = strtolower($header);
+          if (strpos($header_lower, 'suma (') === 0 || strpos($header_lower, 'suma_') === 0) {
             // Si el valor es NULL, vacío, o no numérico, mostrar N/A
             if (is_null($value) || $value === '' || $value === false || !is_numeric($value)) {
               $value = 'N/A';

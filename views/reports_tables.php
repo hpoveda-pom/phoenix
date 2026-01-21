@@ -1,8 +1,21 @@
         <table id="reportsTable" class="table table-striped table-sm fs-9 mb-0">
           <thead>
             <tr>
-              <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { ?>
-                <th class="sort ps-3 <?php echo (strtolower($row_headers) === 'cantidad') ? 'text-center' : ''; ?>">
+              <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { 
+                $header_lower = strtolower($row_headers);
+                $header_class = '';
+                if ($header_lower === 'cantidad') {
+                  $header_class = 'text-center';
+                } elseif (strpos($header_lower, 'suma (') === 0 || 
+                         strpos($header_lower, 'suma_') === 0 ||
+                         strpos($header_lower, 'monto') !== false || 
+                         strpos($header_lower, 'precio') !== false ||
+                         strpos($header_lower, 'total') !== false ||
+                         strpos($header_lower, 'importe') !== false) {
+                  $header_class = 'text-end';
+                }
+              ?>
+                <th class="sort ps-3 <?php echo $header_class; ?>">
 
                   <?php
                   $ReportsId        = $row_reports_info['ReportsId'];
