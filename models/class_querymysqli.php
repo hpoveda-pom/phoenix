@@ -1,5 +1,5 @@
 <?php
-function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start = null, $length = null) {
+function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start = null, $length = null, $array_sumby = null) {
     // Validar que la Query no esté vacía
     if (empty(trim($Query))) {
         return [
@@ -69,6 +69,70 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
         
         $debug_info[] = "GroupBy SQL construido: '$GroupBy'";
         $debug_info[] = "select_GroupBy construido: '$select_GroupBy'";
+    }
+
+    // Procesar SumBy (similar a GroupBy)
+    $select_SumBy = '';
+    $sumby_field = null;
+    if ($array_sumby && !empty($array_sumby)) {
+        if (!isset($GLOBALS['debug_info'])) {
+            $GLOBALS['debug_info'] = [];
+        }
+        $debug_info = &$GLOBALS['debug_info'];
+        $debug_info[] = "=== Procesando SumBy ===";
+        $debug_info[] = "array_sumby recibido: " . json_encode($array_sumby);
+        
+        // Procesar cada item de SumBy (similar a GroupBy)
+        foreach ($array_sumby as $key_sumby => $row_sumby) {
+            $debug_info[] = "Procesando item SumBy #$key_sumby: " . json_encode($row_sumby);
+            
+            // Validar que row_sumby tenga la estructura correcta
+            if (!is_array($row_sumby)) {
+                $debug_info[] = "ERROR: row_sumby no es un array";
+                continue;
+            }
+            
+            // Obtener el nombre del campo - SIEMPRE debe estar en 'value' (igual que GroupBy)
+            $field_name = null;
+            if (isset($row_sumby['value']) && !empty($row_sumby['value'])) {
+                $field_name = trim($row_sumby['value']);
+            } elseif (isset($row_sumby['SumBy']) && !empty($row_sumby['SumBy'])) {
+                // Fallback: si viene directamente como 'SumBy'
+                $field_name = trim($row_sumby['SumBy']);
+            } else {
+                $debug_info[] = "ERROR: No se pudo determinar el nombre del campo en: " . json_encode($row_sumby);
+                $debug_info[] = "Estructura esperada: array('key' => 'field', 'value' => 'nombre_campo')";
+                continue;
+            }
+            
+            // Validar que el nombre del campo no sea 'SumBy' o 'field' (nombres de inputs)
+            if (empty($field_name) || $field_name === 'SumBy' || $field_name === 'field' || strtolower($field_name) === 'sumby' || strtolower($field_name) === 'field') {
+                $debug_info[] = "ERROR: Nombre de campo inválido: '$field_name' (no puede ser 'SumBy' o 'field')";
+                continue;
+            }
+            
+            $debug_info[] = "Campo SumBy determinado: '$field_name'";
+            
+            // Guardar el campo para usar en el SELECT (solo el primero por ahora)
+            if ($sumby_field === null) {
+                $sumby_field = $field_name;
+            }
+        }
+        
+        // Construir el SELECT con SUM (solo si se encontró un campo válido)
+        if ($sumby_field) {
+            // Usar backticks para proteger el nombre del campo
+            $sumby_field_escaped = "`" . $sumby_field . "`";
+            // Hacer SUM del campo (similar a COUNT en GroupBy, pero sumando)
+            $select_SumBy = "SUM(
+                CASE 
+                    WHEN tb." . $sumby_field_escaped . " IS NULL OR tb." . $sumby_field_escaped . " = '' THEN 0
+                    WHEN tb." . $sumby_field_escaped . " REGEXP '^[0-9]+\.?[0-9]*$' THEN CAST(tb." . $sumby_field_escaped . " AS DECIMAL(20,2))
+                    ELSE 0
+                END
+            ) AS Suma_" . $sumby_field;
+            $debug_info[] = "SumBy SQL construido: '$select_SumBy'";
+        }
     }
 
     // Records per page - Soporte para paginación de DataTables
@@ -191,9 +255,18 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
             $debug_info[] = "=== Construyendo consulta SQL con GroupBy ===";
             $debug_info[] = "select_GroupBy (limpio): '$select_GroupBy'";
             $debug_info[] = "GroupBy: '$GroupBy'";
+            if (!empty($select_SumBy)) {
+                $debug_info[] = "SumBy: '$select_SumBy'";
+            }
         }
         
-        $query = "SELECT tb." . $select_GroupBy . ", COUNT(1) AS Cantidad FROM (" . $Query . ")tb " . $query_where . " " . $GroupBy . " ORDER BY Cantidad DESC" . " " . $query_limit;
+        // Construir SELECT con o sin SUM
+        $select_fields = "tb." . $select_GroupBy . ", COUNT(1) AS Cantidad";
+        if (!empty($select_SumBy)) {
+            $select_fields .= ", " . $select_SumBy;
+        }
+        
+        $query = "SELECT " . $select_fields . " FROM (" . $Query . ")tb " . $query_where . " " . $GroupBy . " ORDER BY Cantidad DESC" . " " . $query_limit;
         
         if (isset($GLOBALS['debug_info'])) {
             $debug_info[] = "Query SQL final: " . $query;
@@ -231,14 +304,46 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
         $result = $conn->query($query);
 
         if ($result) {
+            $headers_set = false;
+            $row_count = 0;
             while ($row = $result->fetch_assoc()) {
-                $headers = array_keys($row);
+                if (!$headers_set) {
+                    $headers = array_keys($row);
+                    $headers_set = true;
+                    if (isset($GLOBALS['debug_info'])) {
+                        $debug_info[] = "Headers obtenidos de resultado: " . implode(', ', $headers);
+                        $debug_info[] = "Número de columnas: " . count($headers);
+                    }
+                }
                 $data[] = $row;
+                $row_count++;
             }
             $result->free();
             
             if (isset($GLOBALS['debug_info'])) {
                 $debug_info[] = "Consulta ejecutada exitosamente. Filas obtenidas: " . count($data);
+                if (empty($headers)) {
+                    $debug_info[] = "ADVERTENCIA: No se obtuvieron headers de la consulta";
+                    $debug_info[] = "Query ejecutada: " . $query;
+                    // Intentar obtener headers de la estructura esperada si hay GroupBy
+                    if (!empty($select_GroupBy) && !empty($GroupBy)) {
+                        $debug_info[] = "Intentando obtener headers de la estructura esperada...";
+                        $expected_headers = explode(',', $select_GroupBy);
+                        $expected_headers = array_map('trim', $expected_headers);
+                        $expected_headers[] = 'Cantidad';
+                        if (!empty($select_SumBy)) {
+                            // Extraer el nombre del campo SumBy del alias
+                            if (preg_match('/AS\s+(\w+)/i', $select_SumBy, $matches)) {
+                                $expected_headers[] = $matches[1];
+                                $debug_info[] = "Campo SumBy detectado: " . $matches[1];
+                            }
+                        }
+                        $headers = $expected_headers;
+                        $debug_info[] = "Headers esperados (de estructura): " . implode(', ', $headers);
+                    }
+                } else {
+                    $debug_info[] = "Headers finales: " . implode(', ', $headers);
+                }
             }
         } else {
             // Si la consulta falla, capturar el error
@@ -248,6 +353,42 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
             if (isset($GLOBALS['debug_info'])) {
                 $debug_info[] = "ERROR en consulta SQL: " . $msg_error;
                 $debug_info[] = "Query que falló: " . $query;
+                $debug_info[] = "Error número: " . $conn->errno;
+                // Si el error es sobre un campo que no existe, intentar sin SUM
+                if (strpos($msg_error, "Unknown column") !== false && !empty($select_SumBy)) {
+                    $debug_info[] = "ADVERTENCIA: El campo para SUM puede no existir. Verifique el nombre del campo.";
+                }
+                // Intentar obtener headers de la estructura esperada aunque haya fallado
+                if (empty($headers) && !empty($select_GroupBy)) {
+                    $debug_info[] = "Intentando obtener headers de la estructura esperada (después de error)...";
+                    $expected_headers = explode(',', $select_GroupBy);
+                    $expected_headers = array_map('trim', $expected_headers);
+                    $expected_headers[] = 'Cantidad';
+                    if (!empty($select_SumBy)) {
+                        // Extraer el nombre del campo SumBy del alias
+                        if (preg_match('/AS\s+(\w+)/i', $select_SumBy, $matches)) {
+                            $expected_headers[] = $matches[1];
+                            $debug_info[] = "Campo SumBy detectado: " . $matches[1];
+                        }
+                    }
+                    $headers = $expected_headers;
+                    $debug_info[] = "Headers esperados (de estructura): " . implode(', ', $headers);
+                }
+                // Intentar obtener headers de la estructura de la consulta aunque haya fallado
+                if (empty($headers) && !empty($select_GroupBy)) {
+                    $debug_info[] = "Intentando obtener headers de la estructura esperada...";
+                    $expected_headers = explode(',', $select_GroupBy);
+                    $expected_headers = array_map('trim', $expected_headers);
+                    $expected_headers[] = 'Cantidad';
+                    if (!empty($select_SumBy)) {
+                        // Extraer el nombre del campo SumBy del alias
+                        if (preg_match('/AS\s+(\w+)/i', $select_SumBy, $matches)) {
+                            $expected_headers[] = $matches[1];
+                        }
+                    }
+                    $headers = $expected_headers;
+                    $debug_info[] = "Headers esperados (de estructura): " . implode(', ', $headers);
+                }
             }
         }
     } catch (mysqli_sql_exception $e) {

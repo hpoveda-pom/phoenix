@@ -148,6 +148,50 @@ if (is_array($array_groupby) && !empty($array_groupby)) {
   }
 }
 
+//Sum by selected
+$SumBy = null;
+if (isset($_GET['SumBy'])) {
+  $SumBy = $_GET['SumBy'];
+}
+
+$sumby_selected = array();
+if (isset($_GET['sumby_selected'])) {
+  $sumby_selected = $_GET['sumby_selected'];
+}
+
+$array_sumby = $sumby_selected;
+if (is_array($SumBy)) {
+  if (isset($SumBy['field']) && !empty($SumBy['field'])) {
+    $array_sumby[] = array(
+      'SumBy' => $SumBy['field'],
+    );
+  }
+}
+
+$sumby_results = array();
+if (is_array($array_sumby) && !empty($array_sumby)) {
+  foreach ($array_sumby as $key_sumby => $row_sumby) {
+    if (is_array($row_sumby)) {
+      // Si tiene la clave 'SumBy', usar ese valor directamente como nombre de campo
+      if (isset($row_sumby['SumBy']) && !empty($row_sumby['SumBy'])) {
+        $sumby_results[] = array(
+          'key' => 'field',
+          'value' => $row_sumby['SumBy'],
+        );
+      } else {
+        foreach ($row_sumby as $sumby_key => $sumby_value) {
+          if ($sumby_key !== 'SumBy' || !empty($sumby_value)) {
+            $sumby_results[] = array(
+              'key' => $sumby_key,
+              'value' => $sumby_value,
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
 //OrderBy by selected
 $orderby_selected = array();
 if (isset($_GET['orderby_selected'])) {
@@ -438,9 +482,14 @@ if ($action == "datatables") {
       $groupby_results = [];
       $debug_info[] = "groupby_results inicializado como array vacío";
     }
+    if (!isset($sumby_results)) {
+      $sumby_results = [];
+      $debug_info[] = "sumby_results inicializado como array vacío";
+    }
     
     // Debug: Log de groupby_results antes de enviarlo
     $debug_info[] = "groupby_results antes de class_Recordset: " . json_encode($groupby_results);
+    $debug_info[] = "sumby_results antes de class_Recordset: " . json_encode($sumby_results);
     
     // Obtener parámetros de DataTables
     $draw = isset($_GET['draw']) ? intval($_GET['draw']) : 1;
@@ -465,21 +514,43 @@ if ($action == "datatables") {
     $debug_info[] = "ConnectionId: " . $row_reports_info['ConnectionId'];
     
     // Ejecutar consulta con paginación primero para obtener los headers correctos
-    // (especialmente importante cuando hay GroupBy, ya que los headers cambian)
+    // (especialmente importante cuando hay GroupBy o SumBy, ya que los headers cambian)
     $debug_info[] = "Ejecutando consulta con paginación (start=$start, length=$length)...";
-    $array_reports = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, $start, $length);
+    $debug_info[] = "groupby_results: " . json_encode($groupby_results);
+    $debug_info[] = "sumby_results: " . json_encode($sumby_results);
+    $array_reports = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, $start, $length, $sumby_results);
     
     if (isset($array_reports['error'])) {
       $debug_info[] = "ERROR en consulta: " . $array_reports['error'];
     }
+    if (isset($array_reports['msg_error'])) {
+      $debug_info[] = "MSG_ERROR en consulta: " . $array_reports['msg_error'];
+    }
     
-    // Obtener headers de la consulta ejecutada (que ya incluye GroupBy si aplica)
+    // Obtener headers de la consulta ejecutada (que ya incluye GroupBy/SumBy si aplica)
     $array_headers = $array_reports;
+    
+    // Si hay datos pero no headers, obtenerlos del primer registro
+    if ((!isset($array_headers['headers']) || empty($array_headers['headers'])) && isset($array_headers['data']) && is_array($array_headers['data']) && !empty($array_headers['data'])) {
+      $debug_info[] = "Headers no encontrados pero hay datos, obteniendo del primer registro...";
+      $first_row = $array_headers['data'][0];
+      if (is_array($first_row)) {
+        $array_headers['headers'] = array_keys($first_row);
+        $debug_info[] = "Headers obtenidos del primer registro: " . implode(', ', $array_headers['headers']);
+      }
+    }
     
     // Si no hay headers en la respuesta, intentar obtenerlos de una consulta sin paginación
     if (!isset($array_headers['headers']) || empty($array_headers['headers'])) {
       $debug_info[] = "Headers no encontrados en respuesta, obteniendo de consulta sin paginación...";
-      $array_headers = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, 0, 1);
+      $array_headers = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, 0, 1, $sumby_results);
+      if (isset($array_headers['data']) && is_array($array_headers['data']) && !empty($array_headers['data'])) {
+        $first_row = $array_headers['data'][0];
+        if (is_array($first_row)) {
+          $array_headers['headers'] = array_keys($first_row);
+          $debug_info[] = "Headers obtenidos del primer registro (sin paginación): " . implode(', ', $array_headers['headers']);
+        }
+      }
     }
     
     if (!isset($array_headers['headers'])) {
@@ -493,7 +564,20 @@ if ($action == "datatables") {
     
     if (!is_array($array_headers['headers']) || empty($array_headers['headers'])) {
       $debug_info[] = "ERROR: array_headers['headers'] está vacío o no es array";
-      throw new Exception('Los headers están vacíos');
+      $debug_info[] = "Tipo de array_headers: " . gettype($array_headers);
+      $debug_info[] = "Keys de array_headers: " . (is_array($array_headers) ? implode(', ', array_keys($array_headers)) : 'No es array');
+      if (isset($array_headers['data']) && is_array($array_headers['data']) && !empty($array_headers['data'])) {
+        $debug_info[] = "Hay datos disponibles, obteniendo headers del primer registro...";
+        $first_row = $array_headers['data'][0];
+        if (is_array($first_row)) {
+          $debug_info[] = "Headers del primer registro: " . implode(', ', array_keys($first_row));
+          $array_headers['headers'] = array_keys($first_row);
+        }
+      }
+      if (empty($array_headers['headers'])) {
+        $debug_info[] = "DEBUG COMPLETO de array_headers: " . json_encode($array_headers, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        throw new Exception('Los headers están vacíos');
+      }
     }
     
     $debug_info[] = "Headers obtenidos: " . count($array_headers['headers']) . " columnas: " . implode(', ', $array_headers['headers']);
@@ -510,6 +594,20 @@ if ($action == "datatables") {
           // Formatear "Cantidad" con separadores de miles (formato español: punto para decimales, coma para miles)
           if (strtolower($header) === 'cantidad' && is_numeric($value)) {
             $value = number_format((float)$value, 0, '.', ',');
+          }
+          
+          // Manejar campos Suma_*: si es NULL, 0 (cuando todos eran NULL), o no numérico, mostrar N/A
+          if (strpos(strtolower($header), 'suma_') === 0) {
+            // Si el valor es NULL, vacío, o no numérico, mostrar N/A
+            if (is_null($value) || $value === '' || $value === false || !is_numeric($value)) {
+              $value = 'N/A';
+            } else {
+              $float_value = (float)$value;
+              // Si el valor es 0, podría ser que todos los valores originales eran NULL
+              // Pero por ahora mostramos 0 si es numérico
+              // Formatear con separador de miles
+              $value = number_format($float_value, 2, '.', ',');
+            }
           }
           
           // Aplicar masking si está habilitado

@@ -324,6 +324,9 @@ $(document).ready(function() {
                 <?php if(isset($groupby_results) && !empty($groupby_results)): ?>
                 d.groupby_selected = <?php echo json_encode($groupby_results); ?>;
                 <?php endif; ?>
+                <?php if(isset($sumby_results) && !empty($sumby_results)): ?>
+                d.sumby_selected = <?php echo json_encode($sumby_results); ?>;
+                <?php endif; ?>
             },
             "error": function(xhr, error, thrown) {
                 console.error("Error en DataTables:", error, thrown);

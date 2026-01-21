@@ -123,6 +123,51 @@ if (is_array($array_groupby) && !empty($array_groupby)) {
   }
 }
 
+//Sum by selected
+$SumBy = null;
+if (isset($_GET['SumBy'])) {
+  $SumBy = $_GET['SumBy'];
+}
+
+$sumby_selected = array();
+if (isset($_GET['sumby_selected'])) {
+  $sumby_selected = $_GET['sumby_selected'];
+}
+
+$array_sumby = $sumby_selected;
+if (is_array($SumBy)) {
+  if ($SumBy['field']) {
+    $array_sumby[] = array(
+      'SumBy' => $SumBy['field'],
+    );
+  }
+}
+
+$sumby_results = array();
+if (is_array($array_sumby) && !empty($array_sumby)) {
+  foreach ($array_sumby as $key_sumby => $row_sumby) {
+    if (is_array($row_sumby)) {
+      // Si tiene la clave 'SumBy', usar ese valor directamente como nombre de campo
+      if (isset($row_sumby['SumBy']) && !empty($row_sumby['SumBy'])) {
+        $sumby_results[] = array(
+          'key' => 'field',
+          'value' => $row_sumby['SumBy'],
+        );
+      } else {
+        // Si no, procesar como antes
+        foreach ($row_sumby as $sumby_key => $sumby_value) {
+          if ($sumby_key !== 'SumBy' || !empty($sumby_value)) {
+            $sumby_results[] = array(
+              'key' => $sumby_key,
+              'value' => $sumby_value,
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
 //OrderBy by selected
 $orderby_selected = array();
 if (isset($_GET['orderby_selected'])) {
@@ -251,7 +296,7 @@ exit;
 $LogType = 'Reporte';
 if ($action == "excel") {
   $excel_title  = $row_reports_info['ReportsId'].". ".$row_reports_info['Title'];
-  $excel_data   = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null);
+  $excel_data   = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, null, null, $sumby_results);
 
   $excel_data_masked = [];
 
@@ -289,8 +334,8 @@ if (isset($row_reports_info['TypeId']) && $row_reports_info['TypeId']==1) {
   // Capturar tiempo de inicio de ejecución
   $query_execution_start = microtime(true);
   
-  $array_headers  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], null, null, 1);
-  $array_reports  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, $Limit);
+  $array_headers  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], null, null, 1, null, null, $sumby_results);
+  $array_reports  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, $Limit, null, null, $sumby_results);
   
   // Calcular tiempo de ejecución
   $query_execution_end = microtime(true);

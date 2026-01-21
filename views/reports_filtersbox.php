@@ -46,6 +46,19 @@
             <?php endif; ?>
           </select>
         </div>
+        <!-- sum fields - solo visible cuando hay GroupBy -->
+        <?php if (isset($groupby_results) && !empty($groupby_results)): ?>
+        <div class="col-12 col-md-auto p-1">
+          <select class="form-select" id="SumBy" name="SumBy[field]">
+            <option selected="selected" value="">Sumar</option>
+            <?php if (isset($array_headers['headers']) && is_array($array_headers['headers'])): ?>
+            <?php foreach ($array_headers['headers'] as $key_headers => $row_headers) { ?>
+              <option value="<?php echo $row_headers; ?>"><?php echo getFieldAlias($row_headers); ?></option>
+            <?php } ?>
+            <?php endif; ?>
+          </select>
+        </div>
+        <?php endif; ?>
         <!-- limit records -->
         <div class="col-12 col-md-auto p-1">
           <select class="form-select" id="Limit" name="Limit">
@@ -80,6 +93,16 @@
               <button type="submit" name="unset[<?php echo $groupby_value['key']; ?>]" value="<?php echo $groupby_value['value']; ?>" class="btn btn-link p-0 ms-1" style="color:#bc3803;height:18px;width:12.8px;">x</button>
             </span>
           <?php } ?>
+          <!-- sum remove -->
+          <?php if (isset($sumby_results) && is_array($sumby_results)): ?>
+          <?php foreach ($sumby_results as $sumby_key => $sumby_value) { ?>
+            <input type="hidden" name="sumby_selected[<?php echo $sumby_key; ?>][<?php echo $sumby_value['key']; ?>]" value="<?php echo $sumby_value['value']; ?>">
+            <span class="badge badge-phoenix fs-11 badge-phoenix-warning">
+              <span class="badge-label">Sumar: <?php echo $sumby_value['value']; ?></span>
+              <button type="submit" name="unset[<?php echo $sumby_value['key']; ?>]" value="<?php echo $sumby_value['value']; ?>" class="btn btn-link p-0 ms-1" style="color:#856404;height:18px;width:12.8px;">x</button>
+            </span>
+          <?php } ?>
+          <?php endif; ?>
         </div>
       </div>
     </form>
