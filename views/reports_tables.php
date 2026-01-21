@@ -2,7 +2,7 @@
           <thead>
             <tr>
               <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { ?>
-                <th class="sort ps-3 text-center">
+                <th class="sort ps-3 <?php echo (strtolower($row_headers) === 'cantidad') ? 'text-center' : ''; ?>">
 
                   <?php
                   $ReportsId        = $row_reports_info['ReportsId'];

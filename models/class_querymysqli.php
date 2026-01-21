@@ -13,22 +13,62 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
     $i = 0;
     if ($array_groupby) {
         $total_groupby = count($array_groupby);
-        $GroupBy = null;
-        $select_GroupBy = null;
+        $GroupBy = '';
+        $select_GroupBy = '';
+        
+        // Debug: Log del array_groupby recibido
+        if (!isset($GLOBALS['debug_info'])) {
+            $GLOBALS['debug_info'] = [];
+        }
+        $debug_info = &$GLOBALS['debug_info'];
+        $debug_info[] = "=== Procesando GroupBy ===";
+        $debug_info[] = "array_groupby recibido: " . json_encode($array_groupby);
+        
         foreach ($array_groupby as $key_groupby => $row_groupby) {
-
+            $debug_info[] = "Procesando item GroupBy #$key_groupby: " . json_encode($row_groupby);
+            
+            // Validar que row_groupby tenga la estructura correcta
+            if (!is_array($row_groupby)) {
+                $debug_info[] = "ERROR: row_groupby no es un array";
+                continue;
+            }
+            
+            // Obtener el nombre del campo - SIEMPRE debe estar en 'value'
+            $field_name = null;
+            if (isset($row_groupby['value']) && !empty($row_groupby['value'])) {
+                $field_name = trim($row_groupby['value']);
+            } elseif (isset($row_groupby['GroupBy']) && !empty($row_groupby['GroupBy'])) {
+                // Fallback: si viene directamente como 'GroupBy'
+                $field_name = trim($row_groupby['GroupBy']);
+            } else {
+                $debug_info[] = "ERROR: No se pudo determinar el nombre del campo en: " . json_encode($row_groupby);
+                $debug_info[] = "Estructura esperada: array('key' => 'field', 'value' => 'nombre_campo')";
+                continue;
+            }
+            
+            // Validar que el nombre del campo no sea 'GroupBy' (nombre del input)
+            if (empty($field_name) || $field_name === 'GroupBy' || strtolower($field_name) === 'groupby') {
+                $debug_info[] = "ERROR: Nombre de campo inválido: '$field_name' (no puede ser 'GroupBy')";
+                continue;
+            }
+            
+            $debug_info[] = "Campo GroupBy determinado: '$field_name'";
+            
             // group by
             if ($i == 0) {
-                $GroupBy .= "GROUP BY " . $row_groupby['value'];
+                $GroupBy = "GROUP BY " . $field_name;
             } else {
-                $GroupBy .= "," . $row_groupby['value'];
+                $GroupBy .= "," . $field_name;
             }
 
             // select
-            $select_GroupBy .= $row_groupby['value'] . ",";
+            $select_GroupBy .= $field_name . ",";
 
             $i++;
         }
+        
+        $debug_info[] = "GroupBy SQL construido: '$GroupBy'";
+        $debug_info[] = "select_GroupBy construido: '$select_GroupBy'";
     }
 
     // Records per page - Soporte para paginación de DataTables
@@ -141,8 +181,23 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
     $query = "SELECT tb.* FROM (" . $Query . ")tb " . $query_where . " " . $query_limit;
 
     // Group By or Details
-    if ($array_groupby) {
-        $query = "SELECT tb." . $select_GroupBy . " COUNT(1) AS Cantidad FROM (" . $Query . ")tb " . $query_where . " " . $GroupBy . " ORDER BY Cantidad DESC" . " " . $query_limit;
+    if ($array_groupby && !empty($GroupBy) && !empty($select_GroupBy)) {
+        // Remover la coma final de select_GroupBy
+        $select_GroupBy = rtrim($select_GroupBy, ',');
+        
+        // Debug: Log de la consulta SQL antes de ejecutarla
+        if (isset($GLOBALS['debug_info'])) {
+            $debug_info = &$GLOBALS['debug_info'];
+            $debug_info[] = "=== Construyendo consulta SQL con GroupBy ===";
+            $debug_info[] = "select_GroupBy (limpio): '$select_GroupBy'";
+            $debug_info[] = "GroupBy: '$GroupBy'";
+        }
+        
+        $query = "SELECT tb." . $select_GroupBy . ", COUNT(1) AS Cantidad FROM (" . $Query . ")tb " . $query_where . " " . $GroupBy . " ORDER BY Cantidad DESC" . " " . $query_limit;
+        
+        if (isset($GLOBALS['debug_info'])) {
+            $debug_info[] = "Query SQL final: " . $query;
+        }
     }
 
     // Connect to the database
@@ -165,6 +220,13 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
     $msg_error = ''; // Variable to store error messages
 
     try {
+        // Debug: Log de la consulta antes de ejecutarla
+        if (isset($GLOBALS['debug_info'])) {
+            $debug_info = &$GLOBALS['debug_info'];
+            $debug_info[] = "=== Ejecutando consulta SQL ===";
+            $debug_info[] = "Query: " . $query;
+        }
+        
         // Execute the main query
         $result = $conn->query($query);
 
@@ -174,29 +236,69 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
                 $data[] = $row;
             }
             $result->free();
+            
+            if (isset($GLOBALS['debug_info'])) {
+                $debug_info[] = "Consulta ejecutada exitosamente. Filas obtenidas: " . count($data);
+            }
         } else {
             // Si la consulta falla, capturar el error
             $msg_error = $conn->error;
             $data = [];
+            
+            if (isset($GLOBALS['debug_info'])) {
+                $debug_info[] = "ERROR en consulta SQL: " . $msg_error;
+                $debug_info[] = "Query que falló: " . $query;
+            }
         }
     } catch (mysqli_sql_exception $e) {
         // Capture error and store it in the msg_error variable
         $msg_error = $e->getMessage();
         $data = []; // If there's an error, return empty data
+        
+        if (isset($GLOBALS['debug_info'])) {
+            $debug_info = &$GLOBALS['debug_info'];
+            $debug_info[] = "EXCEPCIÓN SQL: " . $msg_error;
+            $debug_info[] = "Query que causó la excepción: " . $query;
+        }
     } catch (Exception $e) {
         // Capturar cualquier otro error
         $msg_error = $e->getMessage();
         $data = [];
+        
+        if (isset($GLOBALS['debug_info'])) {
+            $debug_info = &$GLOBALS['debug_info'];
+            $debug_info[] = "EXCEPCIÓN: " . $msg_error;
+        }
     }
 
     // Get total rows
-    $query_totalrows = "SELECT COUNT(1) AS TOTAL_ROWS FROM (" . $Query . ") AS tb " . $query_where;
+    // Si hay GroupBy, contar los grupos únicos en lugar de todas las filas
+    if ($array_groupby && !empty($GroupBy) && !empty($select_GroupBy)) {
+        // Contar grupos únicos
+        $select_GroupBy_clean = rtrim($select_GroupBy, ',');
+        $query_totalrows = "SELECT COUNT(1) AS TOTAL_ROWS FROM (SELECT " . $select_GroupBy_clean . " FROM (" . $Query . ")tb " . $query_where . " " . $GroupBy . ") AS grouped";
+        
+        if (isset($GLOBALS['debug_info'])) {
+            $debug_info = &$GLOBALS['debug_info'];
+            $debug_info[] = "=== Contando grupos únicos ===";
+            $debug_info[] = "Query de conteo: " . $query_totalrows;
+        }
+    } else {
+        // Contar todas las filas (sin GroupBy)
+        $query_totalrows = "SELECT COUNT(1) AS TOTAL_ROWS FROM (" . $Query . ") AS tb " . $query_where;
+    }
+    
     try {
         $countStmt = $conn->prepare($query_totalrows);
         if ($countStmt === false) {
             // If prepare failed, capture the error
             $msg_error = $conn->error;
             $total_rows = 0;
+            
+            if (isset($GLOBALS['debug_info'])) {
+                $debug_info = &$GLOBALS['debug_info'];
+                $debug_info[] = "ERROR al preparar consulta de conteo: " . $msg_error;
+            }
         } else {
             $countStmt->execute();
             $result = $countStmt->get_result();
@@ -204,11 +306,21 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
             $totalRowsResult = $result->fetch_assoc();
             $total_rows = $totalRowsResult['TOTAL_ROWS'];
             $countStmt->close();
+            
+            if (isset($GLOBALS['debug_info'])) {
+                $debug_info = &$GLOBALS['debug_info'];
+                $debug_info[] = "Total de " . ($array_groupby && !empty($GroupBy) ? "grupos" : "filas") . " encontrados: " . $total_rows;
+            }
         }
     } catch (mysqli_sql_exception $e) {
         // Capture error and store it in the msg_error variable
         $msg_error = $e->getMessage();
         $total_rows = 0; // If there's an error, set total_rows to 0
+        
+        if (isset($GLOBALS['debug_info'])) {
+            $debug_info = &$GLOBALS['debug_info'];
+            $debug_info[] = "EXCEPCIÓN en conteo: " . $msg_error;
+        }
     }
 
     // Calculate total pages

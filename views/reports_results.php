@@ -191,7 +191,7 @@ if ($action == "update" && $form_id == 'editor_query') {
               <div class="container-fluid">
                 <!-- Información del Reporte -->
                 <div class="card mb-3">
-                  <div class="card-header bg-light">
+                  <div class="card-header bg-body-tertiary">
                     <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Información del Reporte</h6>
                   </div>
                   <div class="card-body">
@@ -218,7 +218,7 @@ if ($action == "update" && $form_id == 'editor_query') {
                 
                 <!-- Log de Debug -->
                 <div class="card">
-                  <div class="card-header bg-light">
+                  <div class="card-header bg-body-tertiary">
                     <h6 class="mb-0"><i class="fas fa-list me-2"></i>Log de Debug</h6>
                   </div>
                   <div class="card-body">
@@ -229,7 +229,7 @@ if ($action == "update" && $form_id == 'editor_query') {
                     if (!empty($debug_messages)) {
                       echo '<div class="table-responsive">';
                       echo '<table class="table table-sm table-bordered mb-0">';
-                      echo '<thead class="table-light">';
+                      echo '<thead class="table-secondary">';
                       echo '<tr><th style="width: 50px;">#</th><th>Mensaje</th></tr>';
                       echo '</thead>';
                       echo '<tbody>';
@@ -290,13 +290,22 @@ document.getElementById("query_form").addEventListener("submit", function (event
 <?php if(isset($array_reports['headers']) && is_array($array_reports['headers']) && !empty($array_reports['headers']) && isset($row_reports_info['ReportsId'])): ?>
 $(document).ready(function() {
     var columnCount = <?php echo count($array_reports['headers']); ?>;
+    var headers = <?php echo json_encode($array_reports['headers']); ?>;
     var columns = [];
     for (var i = 0; i < columnCount; i++) {
-        columns.push({
+        var columnConfig = {
             "data": i,
             "orderable": true,
             "defaultContent": ""
-        });
+        };
+        
+        // Si la columna es "Cantidad", centrarla y ajustar ancho
+        if (headers[i] && headers[i].toLowerCase() === 'cantidad') {
+            columnConfig.className = "text-center";
+            columnConfig.width = "auto";
+        }
+        
+        columns.push(columnConfig);
     }
     
     var reportsTable = $('#reportsTable').DataTable({
@@ -378,9 +387,32 @@ $(document).ready(function() {
             }
         },
         "order": [],
-        "responsive": true,
+        "responsive": false,
+        "scrollX": false,
+        "autoWidth": true,
         "dom": 'rtip',
-        "columns": columns
+        "columns": columns,
+        "columnDefs": (function() {
+            // Encontrar el índice de la columna "Cantidad"
+            var cantidadIndex = -1;
+            for (var i = 0; i < headers.length; i++) {
+                if (headers[i] && headers[i].toLowerCase() === 'cantidad') {
+                    cantidadIndex = i;
+                    break;
+                }
+            }
+            
+            if (cantidadIndex >= 0) {
+                return [
+                    {
+                        "targets": [cantidadIndex],
+                        "width": "auto",
+                        "className": "text-center"
+                    }
+                ];
+            }
+            return [];
+        })()
     });
 });
 <?php endif; ?>

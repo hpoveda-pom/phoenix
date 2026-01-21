@@ -115,7 +115,7 @@ if (isset($_GET['groupby_selected'])) {
 
 $array_groupby = $groupby_selected;
 if (is_array($GroupBy)) {
-  if ($GroupBy['field']) {
+  if (isset($GroupBy['field']) && !empty($GroupBy['field'])) {
     $array_groupby[] = array(
       'GroupBy' => $GroupBy['field'],
     );
@@ -126,11 +126,23 @@ $groupby_results = array();
 if (is_array($array_groupby) && !empty($array_groupby)) {
   foreach ($array_groupby as $key_groupby => $row_groupby) {
     if (is_array($row_groupby)) {
-      foreach ($row_groupby as $groupby_key => $groupby_value) {
+      // Si tiene la clave 'GroupBy', usar ese valor directamente como nombre de campo
+      if (isset($row_groupby['GroupBy']) && !empty($row_groupby['GroupBy'])) {
         $groupby_results[] = array(
-          'key' => $groupby_key,
-          'value' => $groupby_value,
+          'key' => 'field',  // Cambiar 'GroupBy' por 'field' para evitar confusión
+          'value' => $row_groupby['GroupBy'],  // Este es el nombre real del campo (ej: 'canal_venta')
         );
+      } else {
+        // Si no, procesar como antes
+        foreach ($row_groupby as $groupby_key => $groupby_value) {
+          // Solo agregar si la clave no es 'GroupBy' o si el valor no está vacío
+          if ($groupby_key !== 'GroupBy' || !empty($groupby_value)) {
+            $groupby_results[] = array(
+              'key' => $groupby_key,
+              'value' => $groupby_value,
+            );
+          }
+        }
       }
     }
   }
@@ -427,6 +439,9 @@ if ($action == "datatables") {
       $debug_info[] = "groupby_results inicializado como array vacío";
     }
     
+    // Debug: Log de groupby_results antes de enviarlo
+    $debug_info[] = "groupby_results antes de class_Recordset: " . json_encode($groupby_results);
+    
     // Obtener parámetros de DataTables
     $draw = isset($_GET['draw']) ? intval($_GET['draw']) : 1;
     $start = isset($_GET['start']) ? intval($_GET['start']) : 0;
@@ -449,9 +464,23 @@ if ($action == "datatables") {
     $debug_info[] = "Reporte ID: " . (isset($row_reports_info['ReportsId']) ? $row_reports_info['ReportsId'] : 'N/A');
     $debug_info[] = "ConnectionId: " . $row_reports_info['ConnectionId'];
     
-    // Obtener headers primero (sin paginación)
-    $debug_info[] = "Obteniendo headers...";
-    $array_headers = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], null, null, 1);
+    // Ejecutar consulta con paginación primero para obtener los headers correctos
+    // (especialmente importante cuando hay GroupBy, ya que los headers cambian)
+    $debug_info[] = "Ejecutando consulta con paginación (start=$start, length=$length)...";
+    $array_reports = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, $start, $length);
+    
+    if (isset($array_reports['error'])) {
+      $debug_info[] = "ERROR en consulta: " . $array_reports['error'];
+    }
+    
+    // Obtener headers de la consulta ejecutada (que ya incluye GroupBy si aplica)
+    $array_headers = $array_reports;
+    
+    // Si no hay headers en la respuesta, intentar obtenerlos de una consulta sin paginación
+    if (!isset($array_headers['headers']) || empty($array_headers['headers'])) {
+      $debug_info[] = "Headers no encontrados en respuesta, obteniendo de consulta sin paginación...";
+      $array_headers = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, 0, 1);
+    }
     
     if (!isset($array_headers['headers'])) {
       $debug_info[] = "ERROR: array_headers['headers'] no está definido";
@@ -467,28 +496,27 @@ if ($action == "datatables") {
       throw new Exception('Los headers están vacíos');
     }
     
-    $debug_info[] = "Headers obtenidos: " . count($array_headers['headers']) . " columnas";
-    
-    // Ejecutar consulta con paginación
-    $debug_info[] = "Ejecutando consulta con paginación (start=$start, length=$length)...";
-    $array_reports = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, $start, $length);
-    
-    if (isset($array_reports['error'])) {
-      $debug_info[] = "ERROR en consulta: " . $array_reports['error'];
-    }
+    $debug_info[] = "Headers obtenidos: " . count($array_headers['headers']) . " columnas: " . implode(', ', $array_headers['headers']);
     
     // Preparar datos para DataTables
     $data = [];
-    if (isset($array_reports['data']) && is_array($array_reports['data'])) {
+    if (isset($array_reports['data']) && is_array($array_reports['data']) && !empty($array_reports['data'])) {
       $debug_info[] = "Procesando " . count($array_reports['data']) . " filas de datos";
       foreach ($array_reports['data'] as $row_index => $row) {
         $row_data = [];
         foreach ($array_headers['headers'] as $header) {
           $value = isset($row[$header]) ? $row[$header] : '';
+          
+          // Formatear "Cantidad" con separadores de miles (formato español: punto para decimales, coma para miles)
+          if (strtolower($header) === 'cantidad' && is_numeric($value)) {
+            $value = number_format((float)$value, 0, '.', ',');
+          }
+          
           // Aplicar masking si está habilitado
           if (isset($row_reports_info['MaskingStatus']) && $row_reports_info['MaskingStatus'] && function_exists('maskedData')) {
             $value = maskedData($header, $value, $row_reports_info['UsersId'], $row_reports_info['ReportsId']);
           }
+          
           // Limpiar el valor para evitar problemas con JSON
           if (is_null($value)) {
             $value = '';
@@ -502,9 +530,16 @@ if ($action == "datatables") {
           $row_data[] = $value;
         }
         $data[] = $row_data;
+        $debug_info[] = "Fila #$row_index procesada: " . json_encode($row_data);
       }
     } else {
-      $debug_info[] = "WARNING: array_reports['data'] no está definido o no es array";
+      $debug_info[] = "WARNING: array_reports['data'] no está definido, no es array o está vacío";
+      if (isset($array_reports['data'])) {
+        $debug_info[] = "Tipo de array_reports['data']: " . gettype($array_reports['data']);
+        if (is_array($array_reports['data'])) {
+          $debug_info[] = "Tamaño de array_reports['data']: " . count($array_reports['data']);
+        }
+      }
     }
     
     // Respuesta para DataTables

@@ -66,3 +66,152 @@ body[data-bs-theme="dark"] .g-recaptcha iframe {
     padding-left: 2.5rem;
   }
 }
+
+/* DataTable: Solo hacer scroll horizontal cuando realmente sea necesario */
+#tableExample .table-responsive {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+/* Solo activar scroll horizontal si el contenido es más ancho que el contenedor */
+#tableExample .table-responsive:not(:has(table[style*="width"])) {
+  overflow-x: visible;
+}
+
+/* Asegurar que la tabla no fuerce un ancho mínimo innecesario */
+#reportsTable {
+  width: 100% !important;
+  table-layout: auto;
+}
+
+/* DataTables wrapper: evitar scroll innecesario */
+.dataTables_wrapper {
+  overflow-x: visible;
+}
+
+.dataTables_wrapper .dataTables_scroll {
+  overflow-x: visible;
+}
+
+.dataTables_wrapper .dataTables_scrollBody {
+  overflow-x: visible !important;
+}
+
+/* Card headers compatibles con dark mode */
+[data-bs-theme="dark"] .card-header.bg-body-tertiary {
+  background-color: var(--bs-body-tertiary-bg) !important;
+  color: var(--bs-body-tertiary-color) !important;
+  border-bottom-color: var(--bs-border-color) !important;
+}
+
+[data-bs-theme="dark"] .table-secondary {
+  background-color: var(--bs-secondary-bg) !important;
+  color: var(--bs-secondary-color) !important;
+}
+
+/* Quitar bordes entre filas del DataTable */
+#reportsTable tbody tr td {
+  border-top: none !important;
+  border-bottom: none !important;
+}
+
+#reportsTable tbody tr {
+  border-bottom: none !important;
+}
+
+#reportsTable thead tr th {
+  border-bottom: 1px solid var(--bs-border-color) !important;
+}
+
+/* Mantener solo el borde superior del thead y quitar el resto */
+#reportsTable {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+#reportsTable tbody tr:first-child td {
+  border-top: none !important;
+}
+
+#reportsTable tbody tr:last-child td {
+  border-bottom: none !important;
+}
+
+/* Centrar columna Cantidad - header y celdas */
+#reportsTable th.text-center,
+#reportsTable td.text-center {
+  text-align: center !important;
+}
+
+/* Asegurar que el header de Cantidad esté centrado */
+#reportsTable thead th.text-center {
+  text-align: center !important;
+}
+
+/* Centrar contenido del header de Cantidad (incluyendo botones) */
+#reportsTable thead th.text-center button,
+#reportsTable thead th.text-center .btn {
+  text-align: center !important;
+  margin: 0 auto;
+  display: block;
+}
+
+/* Columna Cantidad: ajustar ancho al contenido, no expandir innecesariamente */
+#reportsTable tbody td.text-center {
+  white-space: nowrap;
+  width: auto !important;
+  min-width: fit-content;
+}
+
+/* Asegurar que las columnas centradas (como Cantidad) se ajusten al contenido */
+table.dataTable thead th.text-center,
+table.dataTable tbody td.text-center {
+  width: auto !important;
+  max-width: none;
+}
+
+/* Hacer más tenue y pequeño el texto de información de paginación */
+.dataTables_wrapper .dataTables_info {
+  font-size: 0.75rem !important;
+  color: var(--bs-body-tertiary, #6c757d) !important;
+  opacity: 0.8;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+/* Hacer más tenues y pequeños los controles de paginación */
+.dataTables_wrapper .dataTables_paginate {
+  font-size: 0.75rem !important;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  font-size: 0.75rem !important;
+  padding: 0.25rem 0.5rem !important;
+  margin: 0 0.125rem !important;
+  color: var(--bs-body-tertiary, #6c757d) !important;
+  opacity: 0.8;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+  color: var(--bs-body-color, #212529) !important;
+  opacity: 1;
+  border-color: var(--bs-border-color, #dee2e6) !important;
+  background: var(--bs-body-bg, #fff) !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+  color: var(--bs-primary, #0d6efd) !important;
+  opacity: 1;
+  font-weight: 500;
+  border-color: var(--bs-primary, #0d6efd) !important;
+  background: transparent !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
