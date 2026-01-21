@@ -1,0 +1,5 @@
+MAILTO=""
+SHELL="/bin/bash"
+*/15 * * * * /usr/local/bin/php /home/ovalhost/public_html/monitor/cron/status.cron.php
+40 * * * * wget -q -O - https://test.crkettlebell.com/wp-cron.php?doing_wp_cron >/dev/null 2>&1
+

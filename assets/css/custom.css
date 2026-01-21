@@ -1,0 +1,68 @@
+.table-sm > :not(caption) > * > * {
+  white-space: nowrap;
+}
+.btn-group {
+  display: flex;
+}
+
+.btn-group .btn {
+  margin: 0;
+
+}
+
+.btn-group .btn:not(:last-child) {
+  margin-right: 0.5rem;
+}
+
+@media (min-width: 992px) {
+  .navbar-vertical.navbar-expand-lg .navbar-vertical-content .navbar-nav .nav .nav-link {
+    padding-left: 25px;
+  }
+
+}
+
+/* Hacer que el contenedor del reCAPTCHA sea responsivo */
+.g-recaptcha {
+    transform: scale(0.85);  /* Ajusta el tamaño del reCAPTCHA */
+    transform-origin: 0 0;   /* Para que el reCAPTCHA se ajuste desde la esquina superior izquierda */
+    margin: 0 auto;          /* Centra el reCAPTCHA */
+    display: block;
+    width: 100%;             /* Asegura que ocupe el 100% del ancho disponible */
+}
+
+/* Ajuste para pantallas pequeñas */
+@media (max-width: 576px) {
+    .g-recaptcha {
+        transform: scale(0.75);  /* Ajustar el tamaño aún más pequeño en pantallas muy pequeñas */
+    }
+}
+
+/* Cambiar colores para el modo oscuro */
+
+/*
+body[data-bs-theme="dark"] .g-recaptcha {
+    background-color: #333 !important;
+    color: #f0f0f0 !important;
+}
+
+
+body[data-bs-theme="dark"] .g-recaptcha iframe {
+    filter: invert(1) hue-rotate(180deg) !important;
+}
+*/
+
+.underconstruction-bg {
+  color: #000;
+  font-size: 9PX;
+  border: 2px dashed black;
+  background-color: #F4C400;
+  padding: 5px 10px;
+  display: inline-block;
+  border-radius: 3px;
+}
+
+@media (min-width: 992px) {
+  .navbar-vertical.navbar-expand-lg .navbar-vertical-content .navbar-nav .nav .nav .nav-link {
+    padding-left: 2.5rem;
+  }
+}
