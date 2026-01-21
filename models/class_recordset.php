@@ -1,15 +1,15 @@
 <?php
-function class_Recordset($ConnectionId, $Query, $Filter, $GroupBy, $Limit){
+function class_Recordset($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start = null, $length = null){
 	$results = null;
 
 	switch ($ConnectionId) {
 		case '1': //phoenix
 		case 1:
-			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit);
+			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length);
 			break;
 		case '2': //phoenix DW
 		case 2:
-			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit);
+			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length);
 			break;
 		case '3':
 		case 3:
@@ -17,7 +17,7 @@ function class_Recordset($ConnectionId, $Query, $Filter, $GroupBy, $Limit){
 			break;
 		default:
 			// Si no coincide con ningún caso, intentar con MySQLi por defecto
-			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit);
+			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length);
 			break;
 	}
 

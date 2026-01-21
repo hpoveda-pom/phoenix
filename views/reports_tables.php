@@ -1,8 +1,8 @@
-        <table class="table table-striped table-sm fs-9 mb-0">
+        <table id="reportsTable" class="table table-striped table-sm fs-9 mb-0">
           <thead>
             <tr>
               <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { ?>
-                <th class="sort ps-3 text-center" data-sort="name">
+                <th class="sort ps-3 text-center">
 
                   <?php
                   $ReportsId        = $row_reports_info['ReportsId'];
@@ -30,37 +30,7 @@
             <?php } ?>
           </tr>
         </thead>
-        <tbody class="list">
-          <?php foreach ($array_reports['data'] as $key => $row) { ?>
-            <tr>
-              <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { ?>
-                <?php
-                $tipo_dato = class_tipoDato($row[$row_headers]);
-                $text_aling = null;
-                switch ($tipo_dato) {
-                  case 'decimal':
-                  $valor_dato = number_format($row[$row_headers],2);
-                    //$text_aling = "text-end";
-                  break;
-                  case 'entero':
-                  $valor_dato = $row[$row_headers];
-                    //$text_aling = "text-center";
-                  break;
-
-                  default:
-                  $valor_dato = $row[$row_headers];
-                  $text_aling = null;
-                  break;
-                }
-                if ($row_reports_info['MaskingStatus']) {
-                  $valor_dato = maskedData($row_headers,$valor_dato,$row_reports_info['UsersId'],$row_reports_info['ReportsId']);
-                }
-                ?>
-                <td class="align-middle ps-3 <?php echo $text_aling; ?>">
-                  <?php echo $valor_dato; ?>
-                </td>
-              <?php } ?>
-            </tr>
-          <?php } ?>
+        <tbody>
+          <!-- Los datos se cargarán dinámicamente mediante DataTables -->
         </tbody>
       </table>

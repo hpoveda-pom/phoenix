@@ -75,17 +75,6 @@ if ($action == "update" && $form_id == 'editor_query') {
                   }
                   ?>
                 </div>
-                <!-- Pagination -->
-                <div class="d-flex justify-content-between mt-3">
-                  <span class="d-sm-inline-block" data-list-info="data-list-info">
-                    Registros <b>1</b> al <b><?php echo $array_info['page_rows']; ?></b> 
-                    <span class="text-body-tertiary">Total</span><b><?php echo number_format($array_info['total_rows']); ?></b>
-                  </span>
-                  <div class="d-flex">
-                    <button class="btn btn-sm btn-primary" type="button" data-list-pagination="prev" disabled><span>Previous</span></button>
-                    <button class="btn btn-sm btn-primary px-4 ms-2" type="button" data-list-pagination="next" disabled><span>Next</span></button>
-                  </div>
-                </div>
             </div>
           <?php }elseif(isset($array_reports['error']) && $array_reports['error']){ ?>
           <div class="alert alert-subtle-danger d-flex align-items-center" role="alert">
@@ -127,6 +116,9 @@ if ($action == "update" && $form_id == 'editor_query') {
                   <p><strong>Conector:</strong> <?php echo $row_reports_info['conn_connector']; ?></p>
                   <p><strong>Schema:</strong> <?php echo $row_reports_info['conn_schema']; ?></p>
                   <p><strong>Última ejecución:</strong> <?php echo $row_reports_info['LastExecution']; ?></p>
+                  <?php if (isset($query_execution_time_formatted)): ?>
+                  <p><strong>Tiempo de ejecución:</strong> <span class="badge bg-primary"><?php echo $query_execution_time_formatted; ?></span></p>
+                  <?php endif; ?>
                 </div>
               </div>
             </div>
@@ -191,51 +183,84 @@ if ($action == "update" && $form_id == 'editor_query') {
         <div class="accordion-item">
           <h2 class="accordion-header" id="headingDebug">
             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDebug" aria-expanded="false" aria-controls="collapseDebug">
-              Debug
+              <i class="fas fa-bug me-2"></i> Debug
             </button>
           </h2>
           <div class="accordion-collapse collapse" id="collapseDebug" aria-labelledby="headingDebug" data-bs-parent="#accordionExample">
             <div class="accordion-body pt-0">
               <div class="container-fluid">
-                <h6 class="mb-3">Información de Debug</h6>
-                <?php 
-                // Obtener información de debug
-                $debug_messages = isset($debug_info) && is_array($debug_info) ? $debug_info : (isset($GLOBALS['debug_info']) && is_array($GLOBALS['debug_info']) ? $GLOBALS['debug_info'] : []);
+                <!-- Información del Reporte -->
+                <div class="card mb-3">
+                  <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Información del Reporte</h6>
+                  </div>
+                  <div class="card-body">
+                    <div class="row">
+                      <div class="col-md-6">
+                        <p class="mb-1"><strong>ReportsId:</strong> <?php echo isset($row_reports_info['ReportsId']) ? htmlspecialchars($row_reports_info['ReportsId']) : 'N/A'; ?></p>
+                        <p class="mb-1"><strong>ConnectionId:</strong> <?php echo isset($row_reports_info['ConnectionId']) ? htmlspecialchars($row_reports_info['ConnectionId']) : 'N/A'; ?></p>
+                        <p class="mb-1"><strong>Conexión:</strong> <?php echo isset($row_reports_info['conn_title']) ? htmlspecialchars($row_reports_info['conn_title']) : 'N/A'; ?></p>
+                        <p class="mb-1"><strong>Schema:</strong> <?php echo isset($row_reports_info['conn_schema']) ? htmlspecialchars($row_reports_info['conn_schema']) : 'N/A'; ?></p>
+                      </div>
+                      <div class="col-md-6">
+                        <p class="mb-1"><strong>Total Rows:</strong> <?php echo isset($array_info['total_rows']) ? number_format($array_info['total_rows']) : 'N/A'; ?></p>
+                        <p class="mb-1"><strong>Page Rows:</strong> <?php echo isset($array_info['page_rows']) ? number_format($array_info['page_rows']) : 'N/A'; ?></p>
+                        <?php if (isset($array_reports['error']) && !empty($array_reports['error'])): ?>
+                        <p class="mb-1"><strong class="text-danger">Error:</strong> <span class="text-danger"><?php echo htmlspecialchars($array_reports['error']); ?></span></p>
+                        <?php endif; ?>
+                        <?php if (isset($array_headers['error']) && !empty($array_headers['error'])): ?>
+                        <p class="mb-1"><strong class="text-danger">Error (Headers):</strong> <span class="text-danger"><?php echo htmlspecialchars($array_headers['error']); ?></span></p>
+                        <?php endif; ?>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 
-                if (!empty($debug_messages)) {
-                  echo '<div class="alert alert-info">';
-                  echo '<pre style="white-space: pre-wrap; word-wrap: break-word; font-size: 12px; margin: 0;">';
-                  foreach ($debug_messages as $msg) {
-                    echo htmlspecialchars($msg) . "\n";
-                  }
-                  echo '</pre>';
-                  echo '</div>';
-                } else {
-                  echo '<div class="alert alert-secondary">No hay información de debug disponible.</div>';
-                }
+                <!-- Log de Debug -->
+                <div class="card">
+                  <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="fas fa-list me-2"></i>Log de Debug</h6>
+                  </div>
+                  <div class="card-body">
+                    <?php 
+                    // Obtener información de debug
+                    $debug_messages = isset($debug_info) && is_array($debug_info) ? $debug_info : (isset($GLOBALS['debug_info']) && is_array($GLOBALS['debug_info']) ? $GLOBALS['debug_info'] : []);
+                    
+                    if (!empty($debug_messages)) {
+                      echo '<div class="table-responsive">';
+                      echo '<table class="table table-sm table-bordered mb-0">';
+                      echo '<thead class="table-light">';
+                      echo '<tr><th style="width: 50px;">#</th><th>Mensaje</th></tr>';
+                      echo '</thead>';
+                      echo '<tbody>';
+                      foreach ($debug_messages as $index => $msg) {
+                        $is_error = (stripos($msg, 'error') !== false || stripos($msg, 'exception') !== false || stripos($msg, 'fatal') !== false);
+                        $row_class = $is_error ? 'table-danger' : '';
+                        echo '<tr class="' . $row_class . '">';
+                        echo '<td class="text-center">' . ($index + 1) . '</td>';
+                        echo '<td><code style="font-size: 11px;">' . htmlspecialchars($msg) . '</code></td>';
+                        echo '</tr>';
+                      }
+                      echo '</tbody>';
+                      echo '</table>';
+                      echo '</div>';
+                    } else {
+                      echo '<div class="alert alert-secondary mb-0">No hay información de debug disponible.</div>';
+                    }
+                    ?>
+                  </div>
+                </div>
                 
-                // Información adicional
-                echo '<div class="mt-3">';
-                echo '<h6>Información del Reporte:</h6>';
-                echo '<ul class="list-unstyled">';
-                if (isset($row_reports_info['ConnectionId'])) {
-                  echo '<li><strong>ConnectionId:</strong> ' . htmlspecialchars($row_reports_info['ConnectionId']) . '</li>';
-                }
-                if (isset($row_reports_info['conn_title'])) {
-                  echo '<li><strong>Conexión:</strong> ' . htmlspecialchars($row_reports_info['conn_title']) . '</li>';
-                }
-                if (isset($row_reports_info['conn_schema'])) {
-                  echo '<li><strong>Schema:</strong> ' . htmlspecialchars($row_reports_info['conn_schema']) . '</li>';
-                }
-                if (isset($array_reports['error'])) {
-                  echo '<li><strong>Error:</strong> <span class="text-danger">' . htmlspecialchars($array_reports['error']) . '</span></li>';
-                }
-                if (isset($array_headers['error'])) {
-                  echo '<li><strong>Error (Headers):</strong> <span class="text-danger">' . htmlspecialchars($array_headers['error']) . '</span></li>';
-                }
-                echo '</ul>';
-                echo '</div>';
-                ?>
+                <!-- Información de DataTables (si hay error) -->
+                <div id="datatables-debug" class="card mt-3" style="display: none;">
+                  <div class="card-header bg-warning">
+                    <h6 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Error de DataTables</h6>
+                  </div>
+                  <div class="card-body">
+                    <div id="datatables-error-message" class="text-danger"></div>
+                    <pre id="datatables-error-details" class="mt-2" style="font-size: 11px; max-height: 300px; overflow-y: auto;"></pre>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -260,4 +285,103 @@ document.getElementById("query_form").addEventListener("submit", function (event
     var query = editor_query.getValue();
     document.getElementById("query_input").value = query;
 });
+
+// Inicializar DataTables con paginación del lado del servidor
+<?php if(isset($array_reports['headers']) && is_array($array_reports['headers']) && !empty($array_reports['headers']) && isset($row_reports_info['ReportsId'])): ?>
+$(document).ready(function() {
+    var columnCount = <?php echo count($array_reports['headers']); ?>;
+    var columns = [];
+    for (var i = 0; i < columnCount; i++) {
+        columns.push({
+            "data": i,
+            "orderable": true,
+            "defaultContent": ""
+        });
+    }
+    
+    var reportsTable = $('#reportsTable').DataTable({
+        "processing": true,
+        "serverSide": true,
+        "ajax": {
+            "url": "controllers/data.php",
+            "type": "GET",
+            "data": function(d) {
+                d.action = "datatables";
+                d.Id = <?php echo $row_reports_info['ReportsId']; ?>;
+                // Pasar filtros y agrupaciones si existen
+                <?php if(isset($filter_results) && !empty($filter_results)): ?>
+                d.filter_selected = <?php echo json_encode($filter_results); ?>;
+                <?php endif; ?>
+                <?php if(isset($groupby_results) && !empty($groupby_results)): ?>
+                d.groupby_selected = <?php echo json_encode($groupby_results); ?>;
+                <?php endif; ?>
+            },
+            "error": function(xhr, error, thrown) {
+                console.error("Error en DataTables:", error, thrown);
+                console.error("Response:", xhr.responseText);
+                
+                // Mostrar error en el accordion de debug
+                var errorDiv = document.getElementById('datatables-debug');
+                var errorMsg = document.getElementById('datatables-error-message');
+                var errorDetails = document.getElementById('datatables-error-details');
+                
+                if (errorDiv && errorMsg && errorDetails) {
+                    errorDiv.style.display = 'block';
+                    errorMsg.textContent = "Error: " + error + " - " + thrown;
+                    
+                    var responseText = xhr.responseText || 'Sin respuesta del servidor';
+                    try {
+                        var jsonResponse = JSON.parse(responseText);
+                        errorDetails.textContent = JSON.stringify(jsonResponse, null, 2);
+                        if (jsonResponse.debug && Array.isArray(jsonResponse.debug)) {
+                            errorDetails.textContent += "\n\nDebug Info:\n" + jsonResponse.debug.join("\n");
+                        }
+                    } catch (e) {
+                        errorDetails.textContent = responseText.substring(0, 2000);
+                    }
+                    
+                    // Expandir el accordion de debug
+                    var debugButton = document.querySelector('[data-bs-target="#collapseDebug"]');
+                    if (debugButton && !debugButton.classList.contains('collapsed')) {
+                        debugButton.click();
+                    }
+                }
+                
+                alert("Error al cargar los datos: " + error + "\n\nRevisa el accordion de Debug para más detalles.");
+            }
+        },
+        "pageLength": <?php echo isset($Limit) && $Limit > 0 ? $Limit : 10; ?>,
+        "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
+        "searching": false,
+        "language": {
+            "decimal": ",",
+            "emptyTable": "No hay datos disponibles en la tabla",
+            "info": "Mostrando _START_ a _END_ de _TOTAL_ registros",
+            "infoEmpty": "Mostrando 0 a 0 de 0 registros",
+            "infoFiltered": "(filtrado de _MAX_ registros totales)",
+            "infoPostFix": "",
+            "thousands": ".",
+            "lengthMenu": "Mostrar _MENU_ registros",
+            "loadingRecords": "Cargando...",
+            "processing": "Procesando...",
+            "search": "Buscar:",
+            "zeroRecords": "No se encontraron registros coincidentes",
+            "paginate": {
+                "first": "Primero",
+                "last": "Último",
+                "next": "Siguiente",
+                "previous": "Anterior"
+            },
+            "aria": {
+                "sortAscending": ": activar para ordenar la columna de forma ascendente",
+                "sortDescending": ": activar para ordenar la columna de forma descendente"
+            }
+        },
+        "order": [],
+        "responsive": true,
+        "dom": 'rtip',
+        "columns": columns
+    });
+});
+<?php endif; ?>
 </script>

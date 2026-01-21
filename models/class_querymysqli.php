@@ -1,5 +1,5 @@
 <?php
-function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit) {
+function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start = null, $length = null) {
     // Validar que la Query no esté vacía
     if (empty(trim($Query))) {
         return [
@@ -31,9 +31,13 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
         }
     }
 
-    // Records per page
+    // Records per page - Soporte para paginación de DataTables
     $query_limit = null;
-    if ($Limit) {
+    if ($start !== null && $length !== null) {
+        // Paginación de DataTables (start y length)
+        $query_limit = "LIMIT " . intval($start) . "," . intval($length);
+    } elseif ($Limit) {
+        // Paginación tradicional (solo límite)
         $query_limit = "LIMIT 0," . $Limit;
     }
 

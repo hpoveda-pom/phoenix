@@ -8,7 +8,8 @@ function class_Connections($Id){
     }
     $debug_info = &$GLOBALS['debug_info'];
     
-    $GLOBALS['debug_info'][] = "=== class_Connections llamado con ConnectionId: $Id ===";
+    // Solo loggear si hay un flag de debug detallado o si hay errores
+    $debug_detailed = isset($GLOBALS['debug_detailed']) && $GLOBALS['debug_detailed'] === true;
     
     $conn = null;
     $phoenix_conn = null;
@@ -17,7 +18,9 @@ function class_Connections($Id){
     // Intentar obtener conexión a Phoenix (definida en conn/phoenix.php usando config.php)
     if (isset($conn_phoenix) && $conn_phoenix instanceof mysqli && !$conn_phoenix->connect_error) {
         $phoenix_conn = $conn_phoenix;
-        $debug_info[] = "✓ Usando \$conn_phoenix existente";
+        if ($debug_detailed) {
+            $debug_info[] = "✓ Usando \$conn_phoenix existente";
+        }
     } elseif (isset($row_config) && 
               isset($row_config['db_host']) && !empty(trim($row_config['db_host'])) && 
               isset($row_config['db_user']) && !empty(trim($row_config['db_user'])) &&
@@ -35,7 +38,9 @@ function class_Connections($Id){
             $temp_conn->set_charset("utf8mb4");
             $phoenix_conn = $temp_conn;
             $created_temp_conn = true;
-            $debug_info[] = "✓ Conexión temporal a Phoenix creada exitosamente";
+            if ($debug_detailed) {
+                $debug_info[] = "✓ Conexión temporal a Phoenix creada exitosamente";
+            }
         } elseif ($temp_conn) {
             // Si hay error de conexión, cerrar el objeto
             $debug_info[] = "✗ Error al crear conexión temporal a Phoenix: " . $temp_conn->connect_error;
@@ -55,12 +60,14 @@ function class_Connections($Id){
             $result = $stmt->get_result();
             if ($result && $row = $result->fetch_assoc()) {
                 $found_in_table = true;
-                $debug_info[] = "✓ Conexión encontrada en tabla connections";
-                $debug_info[] = "  - Connector: " . (isset($row['Connector']) ? $row['Connector'] : 'N/A');
-                $debug_info[] = "  - Hostname: " . (isset($row['Hostname']) ? ($row['Hostname'] ?: '(vacío)') : 'N/A');
-                $debug_info[] = "  - Username: " . (isset($row['Username']) ? ($row['Username'] ?: '(vacío)') : 'N/A');
-                $debug_info[] = "  - Schema: " . (isset($row['Schema']) ? ($row['Schema'] ?: '(vacío)') : 'N/A');
-                $debug_info[] = "  - ServiceName: " . (isset($row['ServiceName']) ? ($row['ServiceName'] ?: '(vacío)') : 'N/A');
+                if ($debug_detailed) {
+                    $debug_info[] = "✓ Conexión encontrada en tabla connections";
+                    $debug_info[] = "  - Connector: " . (isset($row['Connector']) ? $row['Connector'] : 'N/A');
+                    $debug_info[] = "  - Hostname: " . (isset($row['Hostname']) ? ($row['Hostname'] ?: '(vacío)') : 'N/A');
+                    $debug_info[] = "  - Username: " . (isset($row['Username']) ? ($row['Username'] ?: '(vacío)') : 'N/A');
+                    $debug_info[] = "  - Schema: " . (isset($row['Schema']) ? ($row['Schema'] ?: '(vacío)') : 'N/A');
+                    $debug_info[] = "  - ServiceName: " . (isset($row['ServiceName']) ? ($row['ServiceName'] ?: '(vacío)') : 'N/A');
+                }
                 
                 // Validar que todos los campos necesarios estén presentes
                 $hostname = isset($row['Hostname']) ? trim($row['Hostname']) : '';
@@ -75,7 +82,9 @@ function class_Connections($Id){
                     $username = (isset($row_config['db_user']) && !empty(trim($row_config['db_user']))) ? trim($row_config['db_user']) : 'root';
                     $password = isset($row_config['db_pass']) ? $row_config['db_pass'] : '';
                     $port = '3306';
-                    $debug_info[] = "  → Usando datos de config.php como fallback (Hostname/Username vacíos)";
+                    if ($debug_detailed) {
+                        $debug_info[] = "  → Usando datos de config.php como fallback (Hostname/Username vacíos)";
+                    }
                 }
                 
                 // Validar que los campos obligatorios no estén vacíos
@@ -84,8 +93,10 @@ function class_Connections($Id){
                     $service_name = isset($row['ServiceName']) && $row['ServiceName'] !== null ? trim($row['ServiceName']) : '';
                     $schema = isset($row['Schema']) && $row['Schema'] !== null ? trim($row['Schema']) : '';
                     
-                    $debug_info[] = "  → Valores raw - ServiceName: '" . (isset($row['ServiceName']) ? $row['ServiceName'] : 'NULL') . "', Schema: '" . (isset($row['Schema']) ? $row['Schema'] : 'NULL') . "'";
-                    $debug_info[] = "  → Valores procesados - ServiceName: '$service_name', Schema: '$schema'";
+                    if ($debug_detailed) {
+                        $debug_info[] = "  → Valores raw - ServiceName: '" . (isset($row['ServiceName']) ? $row['ServiceName'] : 'NULL') . "', Schema: '" . (isset($row['Schema']) ? $row['Schema'] : 'NULL') . "'";
+                        $debug_info[] = "  → Valores procesados - ServiceName: '$service_name', Schema: '$schema'";
+                    }
                     
                     if ($row['Connector'] == 'MySQL' || $row['Connector'] == 'MariaDB' || $row['Connector'] == 'mysqli') {
                         // Para MySQL/MariaDB/mysqli, usar ServiceName como database si está disponible, sino Schema
@@ -96,23 +107,31 @@ function class_Connections($Id){
                         } else {
                             $database = '';
                         }
-                        $debug_info[] = "  → Database determinada: '$database' (ServiceName: '$service_name', Schema: '$schema')";
+                        if ($debug_detailed) {
+                            $debug_info[] = "  → Database determinada: '$database' (ServiceName: '$service_name', Schema: '$schema')";
+                        }
                     } else {
                         // Para otros conectores, usar ServiceName
                         $database = !empty($service_name) ? $service_name : '';
-                        $debug_info[] = "  → Database determinada: '$database' (ServiceName: '$service_name')";
+                        if ($debug_detailed) {
+                            $debug_info[] = "  → Database determinada: '$database' (ServiceName: '$service_name')";
+                        }
                     }
                     
                     // Validar que la base de datos no esté vacía
                     if (!empty($database)) {
-                        $debug_info[] = "  → Intentando conectar a: $hostname:$port/$database (usuario: $username)";
+                        if ($debug_detailed) {
+                            $debug_info[] = "  → Intentando conectar a: $hostname:$port/$database (usuario: $username)";
+                        }
                         // Crear la conexión solo si todos los datos son válidos
                         $conn = class_connMysqli($hostname, $port, $username, $password, $database);
                         
                         if ($conn) {
-                            $debug_info[] = "  ✓ Conexión establecida exitosamente";
+                            if ($debug_detailed) {
+                                $debug_info[] = "  ✓ Conexión establecida exitosamente";
+                            }
                         } else {
-                            $debug_info[] = "  ✗ Error al establecer conexión";
+                            $debug_info[] = "  ✗ Error al establecer conexión para ConnectionId: $Id";
                             
                             // Si la conexión falla y es ID 1 o 2, intentar con la base de datos de config.php
                             if (($Id == 1 || $Id == 2) && isset($row_config['db_name']) && !empty(trim($row_config['db_name']))) {
@@ -122,7 +141,9 @@ function class_Connections($Id){
                                     $debug_info[] = "  → Intentando fallback con base de datos de config.php: $db_name";
                                     $conn = class_connMysqli($hostname, $port, $username, $password, $db_name);
                                     if ($conn) {
-                                        $debug_info[] = "  ✓ Conexión establecida con fallback";
+                                        if ($debug_detailed) {
+                                            $debug_info[] = "  ✓ Conexión establecida con fallback";
+                                        }
                                     } else {
                                         $debug_info[] = "  ✗ Error también con fallback";
                                     }

@@ -286,8 +286,16 @@ if (!isset($GLOBALS['debug_info'])) {
 //reports recordset
 if (isset($row_reports_info['TypeId']) && $row_reports_info['TypeId']==1) {
 
+  // Capturar tiempo de inicio de ejecución
+  $query_execution_start = microtime(true);
+  
   $array_headers  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], null, null, 1);
   $array_reports  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, $Limit);
+  
+  // Calcular tiempo de ejecución
+  $query_execution_end = microtime(true);
+  $query_execution_time = $query_execution_end - $query_execution_start;
+  $query_execution_time_formatted = number_format($query_execution_time, 3) . ' segundos';
   
   // Capturar información de debug de class_Connections
   $debug_info = isset($GLOBALS['debug_info']) ? $GLOBALS['debug_info'] : [];
@@ -323,6 +331,9 @@ if (isset($row_reports_info['TypeId']) && $row_reports_info['TypeId']==1) {
 
 //parent recordsets
 if (isset($row_reports_info['TypeId']) && $row_reports_info['TypeId']==2) {
+  // Capturar tiempo de inicio de ejecución
+  $query_execution_start = microtime(true);
+  
   $query_parent = "
   SELECT 
   a.*,
@@ -348,7 +359,12 @@ if (isset($row_reports_info['TypeId']) && $row_reports_info['TypeId']==2) {
   ORDER BY a.Order ASC
   ";
   $array_parent = class_Recordset(1, $query_parent, null, null, NULL);
-  $array_info = $array_parent['info']; 
+  $array_info = $array_parent['info'];
+  
+  // Calcular tiempo de ejecución
+  $query_execution_end = microtime(true);
+  $query_execution_time = $query_execution_end - $query_execution_start;
+  $query_execution_time_formatted = number_format($query_execution_time, 3) . ' segundos';
 
 }
 

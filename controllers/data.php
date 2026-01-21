@@ -1,26 +1,29 @@
 <?php
-require_once('functions.php');
-require_once('models/class_recordset.php');
-require_once('models/class_connections.php');
-require_once('models/class_exportexcel.php');
-require_once('models/class_exportjson.php');
-require_once('models/class_exportcsv.php');
-require_once('models/class_queryoci.php');
-require_once('models/class_querymysqli.php');
-require_once('models/class_connoci.php');
-require_once('models/class_connmysqli.php');
-require_once('models/class_filterremove.php');
-require_once('models/class_tipodato.php');
-require_once('models/class_accesslog.php');
-require_once('models/class_querymysqliexe.php');
-require_once('models/class_pipeline.php');
-require_once('models/class_namingconvention.php');
-require_once('models/class_lastexecution.php');
-require_once('models/class_ociformat.php');
-require_once('models/class_fieldalias.php');
+// Obtener el directorio base del proyecto
+$base_dir = dirname(__DIR__);
+
+require_once($base_dir . '/functions.php');
+require_once($base_dir . '/models/class_recordset.php');
+require_once($base_dir . '/models/class_connections.php');
+require_once($base_dir . '/models/class_exportexcel.php');
+require_once($base_dir . '/models/class_exportjson.php');
+require_once($base_dir . '/models/class_exportcsv.php');
+require_once($base_dir . '/models/class_queryoci.php');
+require_once($base_dir . '/models/class_querymysqli.php');
+require_once($base_dir . '/models/class_connoci.php');
+require_once($base_dir . '/models/class_connmysqli.php');
+require_once($base_dir . '/models/class_filterremove.php');
+require_once($base_dir . '/models/class_tipodato.php');
+require_once($base_dir . '/models/class_accesslog.php');
+require_once($base_dir . '/models/class_querymysqliexe.php');
+require_once($base_dir . '/models/class_pipeline.php');
+require_once($base_dir . '/models/class_namingconvention.php');
+require_once($base_dir . '/models/class_lastexecution.php');
+require_once($base_dir . '/models/class_ociformat.php');
+require_once($base_dir . '/models/class_fieldalias.php');
 
 //php ini settings
-require_once('config.php');
+require_once($base_dir . '/config.php');
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -173,10 +176,19 @@ if ($ReportsId) {
   WHERE a.Status = 1 AND b.Status = 1 AND a.ReportsId = ".$ReportsId." ORDER BY `Order` ASC
   ";
   $reports_info = class_Recordset(1, $query_reports_info, null, null, 1);
-  $row_reports_info = $reports_info['data'][0];
+  if (isset($reports_info['data'][0])) {
+    $row_reports_info = $reports_info['data'][0];
+  } else {
+    if ($action != "datatables") {
+      echo '<div class="alert alert-subtle-danger" role="alert">Error, no ha seleccionado un reporte válido!</div>';
+      exit;
+    }
+  }
 }else{
-  echo '<div class="alert alert-subtle-danger" role="alert">Error, no ha seleccionado un reporte válido!</div>';
-  exit;
+  if ($action != "datatables") {
+    echo '<div class="alert alert-subtle-danger" role="alert">Error, no ha seleccionado un reporte válido!</div>';
+    exit;
+  }
 }
 
 
@@ -367,5 +379,188 @@ if ($action == "report") {
   $array_info     = $array_reports['info'];
   $data           = $array_reports['data'];
 
+}
+
+// DataTables server-side processing
+if ($action == "datatables") {
+  // Limpiar el log de debug anterior y solo mantener errores
+  $previous_debug = isset($GLOBALS['debug_info']) ? $GLOBALS['debug_info'] : [];
+  $error_messages = [];
+  foreach ($previous_debug as $msg) {
+    if (stripos($msg, 'error') !== false || stripos($msg, '✗') !== false || stripos($msg, 'exception') !== false) {
+      $error_messages[] = $msg;
+    }
+  }
+  
+  // Inicializar array de debug limpio
+  $GLOBALS['debug_info'] = $error_messages;
+  $GLOBALS['debug_detailed'] = false; // Desactivar debug detallado para reducir logs
+  $debug_info = &$GLOBALS['debug_info'];
+  $debug_info[] = "=== DataTables Request ===";
+  $debug_info[] = "GET params: " . json_encode($_GET);
+  
+  // Capturar errores en un buffer
+  $error_buffer = '';
+  set_error_handler(function($errno, $errstr, $errfile, $errline) use (&$error_buffer, &$debug_info) {
+    $error_buffer .= "[$errno] $errstr en $errfile:$errline\n";
+    $debug_info[] = "PHP Error: [$errno] $errstr";
+    return true;
+  });
+  
+  // Limpiar cualquier salida previa
+  while (ob_get_level()) {
+    ob_end_clean();
+  }
+  
+  header('Content-Type: application/json; charset=utf-8');
+  
+  try {
+    $debug_info[] = "Iniciando procesamiento DataTables";
+    
+    // Inicializar variables si no existen
+    if (!isset($filter_results)) {
+      $filter_results = [];
+      $debug_info[] = "filter_results inicializado como array vacío";
+    }
+    if (!isset($groupby_results)) {
+      $groupby_results = [];
+      $debug_info[] = "groupby_results inicializado como array vacío";
+    }
+    
+    // Obtener parámetros de DataTables
+    $draw = isset($_GET['draw']) ? intval($_GET['draw']) : 1;
+    $start = isset($_GET['start']) ? intval($_GET['start']) : 0;
+    $length = isset($_GET['length']) ? intval($_GET['length']) : 10;
+    $search_value = isset($_GET['search']['value']) ? $_GET['search']['value'] : '';
+    
+    $debug_info[] = "Parámetros: draw=$draw, start=$start, length=$length";
+    
+    // Validar que exista la información del reporte
+    if (!isset($row_reports_info)) {
+      throw new Exception('$row_reports_info no está definido');
+    }
+    if (!isset($row_reports_info['ConnectionId'])) {
+      throw new Exception('ConnectionId no está definido en $row_reports_info');
+    }
+    if (!isset($row_reports_info['Query'])) {
+      throw new Exception('Query no está definido en $row_reports_info');
+    }
+    
+    $debug_info[] = "Reporte ID: " . (isset($row_reports_info['ReportsId']) ? $row_reports_info['ReportsId'] : 'N/A');
+    $debug_info[] = "ConnectionId: " . $row_reports_info['ConnectionId'];
+    
+    // Obtener headers primero (sin paginación)
+    $debug_info[] = "Obteniendo headers...";
+    $array_headers = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], null, null, 1);
+    
+    if (!isset($array_headers['headers'])) {
+      $debug_info[] = "ERROR: array_headers['headers'] no está definido";
+      $debug_info[] = "array_headers keys: " . implode(', ', array_keys($array_headers));
+      if (isset($array_headers['error'])) {
+        $debug_info[] = "Error en headers: " . $array_headers['error'];
+      }
+      throw new Exception('No se pudieron obtener los headers del reporte: ' . (isset($array_headers['error']) ? $array_headers['error'] : 'Desconocido'));
+    }
+    
+    if (!is_array($array_headers['headers']) || empty($array_headers['headers'])) {
+      $debug_info[] = "ERROR: array_headers['headers'] está vacío o no es array";
+      throw new Exception('Los headers están vacíos');
+    }
+    
+    $debug_info[] = "Headers obtenidos: " . count($array_headers['headers']) . " columnas";
+    
+    // Ejecutar consulta con paginación
+    $debug_info[] = "Ejecutando consulta con paginación (start=$start, length=$length)...";
+    $array_reports = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, $start, $length);
+    
+    if (isset($array_reports['error'])) {
+      $debug_info[] = "ERROR en consulta: " . $array_reports['error'];
+    }
+    
+    // Preparar datos para DataTables
+    $data = [];
+    if (isset($array_reports['data']) && is_array($array_reports['data'])) {
+      $debug_info[] = "Procesando " . count($array_reports['data']) . " filas de datos";
+      foreach ($array_reports['data'] as $row_index => $row) {
+        $row_data = [];
+        foreach ($array_headers['headers'] as $header) {
+          $value = isset($row[$header]) ? $row[$header] : '';
+          // Aplicar masking si está habilitado
+          if (isset($row_reports_info['MaskingStatus']) && $row_reports_info['MaskingStatus'] && function_exists('maskedData')) {
+            $value = maskedData($header, $value, $row_reports_info['UsersId'], $row_reports_info['ReportsId']);
+          }
+          // Limpiar el valor para evitar problemas con JSON
+          if (is_null($value)) {
+            $value = '';
+          } elseif (is_bool($value)) {
+            $value = $value ? '1' : '0';
+          } elseif (is_array($value) || is_object($value)) {
+            $value = json_encode($value);
+          } else {
+            $value = (string)$value;
+          }
+          $row_data[] = $value;
+        }
+        $data[] = $row_data;
+      }
+    } else {
+      $debug_info[] = "WARNING: array_reports['data'] no está definido o no es array";
+    }
+    
+    // Respuesta para DataTables
+    $response = [
+      'draw' => $draw,
+      'recordsTotal' => isset($array_reports['info']['total_rows']) ? intval($array_reports['info']['total_rows']) : 0,
+      'recordsFiltered' => isset($array_reports['info']['total_rows']) ? intval($array_reports['info']['total_rows']) : 0,
+      'data' => $data
+    ];
+    
+    // Si hay error, agregarlo a la respuesta
+    if (isset($array_reports['error']) && !empty($array_reports['error'])) {
+      $response['error'] = $array_reports['error'];
+      $debug_info[] = "Error agregado a respuesta: " . $array_reports['error'];
+    }
+    
+    $debug_info[] = "Respuesta preparada: " . count($data) . " filas, " . $response['recordsTotal'] . " total";
+    
+    // Validar JSON antes de enviar
+    $json_response = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json_response === false) {
+      $json_error = json_last_error_msg();
+      $debug_info[] = "ERROR al codificar JSON: " . $json_error;
+      throw new Exception('Error al codificar JSON: ' . $json_error);
+    }
+    
+    $debug_info[] = "JSON generado exitosamente (" . strlen($json_response) . " bytes)";
+    
+    echo $json_response;
+    
+  } catch (Exception $e) {
+    $debug_info[] = "EXCEPCIÓN: " . $e->getMessage();
+    $error_response = [
+      'draw' => isset($_GET['draw']) ? intval($_GET['draw']) : 1,
+      'recordsTotal' => 0,
+      'recordsFiltered' => 0,
+      'data' => [],
+      'error' => $e->getMessage(),
+      'debug' => $debug_info
+    ];
+    echo json_encode($error_response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+  } catch (Error $e) {
+    $debug_info[] = "ERROR FATAL: " . $e->getMessage();
+    $error_response = [
+      'draw' => isset($_GET['draw']) ? intval($_GET['draw']) : 1,
+      'recordsTotal' => 0,
+      'recordsFiltered' => 0,
+      'data' => [],
+      'error' => 'Error: ' . $e->getMessage(),
+      'debug' => $debug_info
+    ];
+    echo json_encode($error_response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+  }
+  
+  restore_error_handler();
+  
+  exit;
 }
 ?>
