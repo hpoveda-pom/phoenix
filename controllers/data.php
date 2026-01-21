@@ -592,8 +592,34 @@ if ($action == "datatables") {
           $value = isset($row[$header]) ? $row[$header] : '';
           
           // Formatear "Cantidad" con separadores de miles (formato español: punto para decimales, coma para miles)
+          // Si hay GroupBy, hacer la columna "Cantidad" clickeable para drill-down
+          $is_cantidad_clickable = false;
           if (strtolower($header) === 'cantidad' && is_numeric($value)) {
-            $value = number_format((float)$value, 0, '.', ',');
+            $formatted_value = number_format((float)$value, 0, '.', ',');
+            
+            // Si hay groupby_results, hacer el valor clickeable con los datos de agrupación
+            if (!empty($groupby_results) && is_array($groupby_results)) {
+              // Construir objeto con los valores de los campos agrupados
+              $group_values = array();
+              foreach ($groupby_results as $groupby_item) {
+                $group_field = isset($groupby_item['value']) ? $groupby_item['value'] : (isset($groupby_item['key']) ? $groupby_item['key'] : '');
+                if (!empty($group_field) && isset($row[$group_field])) {
+                  $group_values[$group_field] = $row[$group_field];
+                }
+              }
+              
+              // Si hay valores de agrupación, hacer el valor clickeable
+              if (!empty($group_values)) {
+                // Codificar los valores de agrupación en JSON para el atributo data
+                $group_values_json = json_encode($group_values, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS);
+                $value = '<span class="cantidad-clickable" style="cursor: pointer; color: #0d6efd; text-decoration: underline;" data-group-values=\'' . htmlspecialchars($group_values_json, ENT_QUOTES, 'UTF-8') . '\'>' . htmlspecialchars($formatted_value) . '</span>';
+                $is_cantidad_clickable = true;
+              } else {
+                $value = $formatted_value;
+              }
+            } else {
+              $value = $formatted_value;
+            }
           }
           
           // Manejar campos Suma (*) o Suma_*: si es NULL, 0 (cuando todos eran NULL), o no numérico, mostrar N/A
@@ -611,20 +637,22 @@ if ($action == "datatables") {
             }
           }
           
-          // Aplicar masking si está habilitado
-          if (isset($row_reports_info['MaskingStatus']) && $row_reports_info['MaskingStatus'] && function_exists('maskedData')) {
+          // Aplicar masking si está habilitado (solo si no es HTML clickeable)
+          if (!$is_cantidad_clickable && isset($row_reports_info['MaskingStatus']) && $row_reports_info['MaskingStatus'] && function_exists('maskedData')) {
             $value = maskedData($header, $value, $row_reports_info['UsersId'], $row_reports_info['ReportsId']);
           }
           
-          // Limpiar el valor para evitar problemas con JSON
-          if (is_null($value)) {
-            $value = '';
-          } elseif (is_bool($value)) {
-            $value = $value ? '1' : '0';
-          } elseif (is_array($value) || is_object($value)) {
-            $value = json_encode($value);
-          } else {
-            $value = (string)$value;
+          // Limpiar el valor para evitar problemas con JSON (solo si no es HTML)
+          if (!$is_cantidad_clickable) {
+            if (is_null($value)) {
+              $value = '';
+            } elseif (is_bool($value)) {
+              $value = $value ? '1' : '0';
+            } elseif (is_array($value) || is_object($value)) {
+              $value = json_encode($value);
+            } else {
+              $value = (string)$value;
+            }
           }
           $row_data[] = $value;
         }

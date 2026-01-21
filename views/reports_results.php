@@ -299,10 +299,17 @@ $(document).ready(function() {
             "defaultContent": ""
         };
         
-        // Si la columna es "Cantidad", centrarla y ajustar ancho
+        // Si la columna es "Cantidad", centrarla y ajustar ancho, y permitir HTML
         if (headers[i] && headers[i].toLowerCase() === 'cantidad') {
             columnConfig.className = "text-center";
             columnConfig.width = "auto";
+            columnConfig.render = function(data, type, row) {
+                // Si el dato contiene HTML (span con cantidad-clickable), devolverlo tal cual
+                if (type === 'display' && typeof data === 'string' && data.indexOf('<span') !== -1) {
+                    return data;
+                }
+                return data;
+            };
         }
         
         columns.push(columnConfig);
@@ -440,6 +447,57 @@ $(document).ready(function() {
             
             return columnDefs;
         })()
+    });
+    
+    // Manejar clic en valores de "Cantidad" para drill-down
+    $(document).on('click', '.cantidad-clickable', function(e) {
+        e.preventDefault();
+        
+        // Obtener los valores de agrupación del atributo data-group-values
+        var groupValuesAttr = $(this).attr('data-group-values');
+        if (!groupValuesAttr) {
+            console.error('No se encontró data-group-values en el elemento clickeado');
+            return;
+        }
+        
+        try {
+            // Parsear el JSON de los valores de agrupación
+            var groupValues = JSON.parse(groupValuesAttr);
+            console.log('Valores de agrupación:', groupValues);
+            
+            // Construir la URL base
+            var baseUrl = 'reports.php';
+            var urlParams = new URLSearchParams();
+            urlParams.set('Id', <?php echo $row_reports_info['ReportsId']; ?>);
+            
+            // Agregar filtros basados en los valores de agrupación
+            // Cada campo agrupado se convierte en un filtro con operador "="
+            var filterIndex = 0;
+            for (var field in groupValues) {
+                if (groupValues.hasOwnProperty(field)) {
+                    urlParams.append('Filter[' + filterIndex + '][field]', field);
+                    urlParams.append('Filter[' + filterIndex + '][operator]', '=');
+                    urlParams.append('Filter[' + filterIndex + '][keyword]', groupValues[field]);
+                    filterIndex++;
+                }
+            }
+            
+            // Mantener otros parámetros existentes si es necesario
+            <?php if(isset($Limit) && $Limit > 0): ?>
+            urlParams.set('Limit', <?php echo $Limit; ?>);
+            <?php endif; ?>
+            
+            // Construir la URL final
+            var finalUrl = baseUrl + '?' + urlParams.toString();
+            console.log('Navegando a:', finalUrl);
+            
+            // Redirigir a la nueva URL
+            window.location.href = finalUrl;
+        } catch (error) {
+            console.error('Error al parsear data-group-values:', error);
+            console.error('Valor recibido:', groupValuesAttr);
+            alert('Error al procesar el clic. Por favor, intente nuevamente.');
+        }
     });
 });
 <?php endif; ?>

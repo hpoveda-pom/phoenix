@@ -71,10 +71,10 @@ if (isset($_GET['filter_selected'])) {
 
 $array_filters = $filter_selected;
 if (is_array($Filter)) {
-  if ($Filter['field']) {
+  if (isset($Filter['field']) && !empty($Filter['field'])) {
     $array_filters[] = array(
-      'filter' => array($Filter['field'] => $Filter['keyword']),
-      'operator' => $Filter['operator']
+      'filter' => array($Filter['field'] => isset($Filter['keyword']) ? $Filter['keyword'] : ''),
+      'operator' => isset($Filter['operator']) ? $Filter['operator'] : '='
     );
   }
 }
