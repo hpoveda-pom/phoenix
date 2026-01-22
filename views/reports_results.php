@@ -216,40 +216,83 @@ if ($action == "update" && $form_id == 'editor_query') {
                   </div>
                 </div>
                 
-                <!-- Log de Debug -->
-                <div class="card">
-                  <div class="card-header bg-body-tertiary">
-                    <h6 class="mb-0"><i class="fas fa-list me-2"></i>Log de Debug</h6>
+                <!-- Debug Específico de Filtros -->
+                <div class="card mb-3">
+                  <div class="card-header bg-primary text-white">
+                    <h6 class="mb-0"><i class="fas fa-filter me-2"></i>Debug de Filtros y Queries SQL</h6>
                   </div>
                   <div class="card-body">
                     <?php 
-                    // Obtener información de debug
-                    $debug_messages = isset($debug_info) && is_array($debug_info) ? $debug_info : (isset($GLOBALS['debug_info']) && is_array($GLOBALS['debug_info']) ? $GLOBALS['debug_info'] : []);
+                    // Obtener información de debug específica de filtros
+                    $debug_filters = isset($GLOBALS['debug_filters']) && is_array($GLOBALS['debug_filters']) ? $GLOBALS['debug_filters'] : [];
                     
-                    if (!empty($debug_messages)) {
+                    if (!empty($debug_filters)) {
                       echo '<div class="table-responsive">';
                       echo '<table class="table table-sm table-bordered mb-0">';
                       echo '<thead class="table-secondary">';
-                      echo '<tr><th style="width: 50px;">#</th><th>Mensaje</th></tr>';
+                      echo '<tr><th style="width: 50px;">#</th><th>Información</th></tr>';
                       echo '</thead>';
                       echo '<tbody>';
-                      foreach ($debug_messages as $index => $msg) {
-                        $is_error = (stripos($msg, 'error') !== false || stripos($msg, 'exception') !== false || stripos($msg, 'fatal') !== false);
-                        $row_class = $is_error ? 'table-danger' : '';
+                      foreach ($debug_filters as $index => $msg) {
+                        $is_sql = (stripos($msg, 'SQL:') !== false || stripos($msg, 'SQL COUNT:') !== false);
+                        $is_error = (stripos($msg, 'error') !== false || stripos($msg, 'exception') !== false);
+                        $row_class = '';
+                        if ($is_error) {
+                          $row_class = 'table-danger';
+                        } elseif ($is_sql) {
+                          $row_class = 'table-info';
+                        }
                         echo '<tr class="' . $row_class . '">';
                         echo '<td class="text-center">' . ($index + 1) . '</td>';
-                        echo '<td><code style="font-size: 11px;">' . htmlspecialchars($msg) . '</code></td>';
+                        if ($is_sql) {
+                          // Para queries SQL, mostrar en un formato más legible
+                          echo '<td><pre style="font-size: 10px; margin: 0; white-space: pre-wrap; word-wrap: break-word;">' . htmlspecialchars($msg) . '</pre></td>';
+                        } else {
+                          echo '<td><code style="font-size: 11px;">' . htmlspecialchars($msg) . '</code></td>';
+                        }
                         echo '</tr>';
                       }
                       echo '</tbody>';
                       echo '</table>';
                       echo '</div>';
                     } else {
-                      echo '<div class="alert alert-secondary mb-0">No hay información de debug disponible.</div>';
+                      echo '<div class="alert alert-warning mb-0">No hay información de debug de filtros disponible. Recarga la página con filtros en la URL.</div>';
                     }
                     ?>
                   </div>
                 </div>
+                
+                <!-- Log de Debug General (si existe) -->
+                <?php 
+                $debug_messages = isset($debug_info) && is_array($debug_info) ? $debug_info : (isset($GLOBALS['debug_info']) && is_array($GLOBALS['debug_info']) ? $GLOBALS['debug_info'] : []);
+                if (!empty($debug_messages)): 
+                ?>
+                <div class="card">
+                  <div class="card-header bg-body-tertiary">
+                    <h6 class="mb-0"><i class="fas fa-list me-2"></i>Log de Debug General</h6>
+                  </div>
+                  <div class="card-body">
+                    <div class="table-responsive">
+                      <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-secondary">
+                          <tr><th style="width: 50px;">#</th><th>Mensaje</th></tr>
+                        </thead>
+                        <tbody>
+                          <?php foreach ($debug_messages as $index => $msg): 
+                            $is_error = (stripos($msg, 'error') !== false || stripos($msg, 'exception') !== false || stripos($msg, 'fatal') !== false);
+                            $row_class = $is_error ? 'table-danger' : '';
+                          ?>
+                          <tr class="<?php echo $row_class; ?>">
+                            <td class="text-center"><?php echo ($index + 1); ?></td>
+                            <td><code style="font-size: 11px;"><?php echo htmlspecialchars($msg); ?></code></td>
+                          </tr>
+                          <?php endforeach; ?>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+                <?php endif; ?>
                 
                 <!-- Información de DataTables (si hay error) -->
                 <div id="datatables-debug" class="card mt-3" style="display: none;">
@@ -335,9 +378,36 @@ $(document).ready(function() {
                 d.sumby_selected = <?php echo json_encode($sumby_results); ?>;
                 <?php endif; ?>
             },
+            "dataSrc": function(json) {
+                // Mostrar debug de filtros en consola sin interferir
+                if (json.debug_filters) {
+                    console.log("=== DEBUG FILTROS (AJAX) ===");
+                    json.debug_filters.forEach(function(msg) {
+                        console.log(msg);
+                    });
+                    
+                    // Mostrar alerta si hay discrepancia
+                    if (json.recordsTotal > 0 && json.recordsTotal > 10) {
+                        console.warn("⚠️ ADVERTENCIA: DataTables recibió " + json.recordsTotal + " registros. ¿Los filtros se aplicaron correctamente?");
+                    }
+                }
+                // Retornar los datos para DataTables
+                return json.data;
+            },
             "error": function(xhr, error, thrown) {
                 console.error("Error en DataTables:", error, thrown);
                 console.error("Response:", xhr.responseText);
+                
+                // Mostrar debug de filtros si está disponible
+                try {
+                    var response = JSON.parse(xhr.responseText);
+                    if (response.debug_filters) {
+                        console.log("=== DEBUG FILTROS (AJAX) ===");
+                        response.debug_filters.forEach(function(msg) {
+                            console.log(msg);
+                        });
+                    }
+                } catch(e) {}
                 
                 // Mostrar error en el accordion de debug
                 var errorDiv = document.getElementById('datatables-debug');

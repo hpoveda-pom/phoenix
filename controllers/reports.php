@@ -71,7 +71,19 @@ if (isset($_GET['filter_selected'])) {
 
 $array_filters = $filter_selected;
 if (is_array($Filter)) {
-  if (isset($Filter['field']) && !empty($Filter['field'])) {
+  // Manejar arrays indexados numéricamente: Filter[0][field], Filter[1][field], etc.
+  if (isset($Filter[0]) && is_array($Filter[0])) {
+    // Es un array indexado: Filter[0][field], Filter[1][field], etc.
+    foreach ($Filter as $filter_index => $filter_item) {
+      if (is_array($filter_item) && isset($filter_item['field']) && !empty($filter_item['field'])) {
+        $array_filters[] = array(
+          'filter' => array($filter_item['field'] => isset($filter_item['keyword']) ? $filter_item['keyword'] : ''),
+          'operator' => isset($filter_item['operator']) ? $filter_item['operator'] : '='
+        );
+      }
+    }
+  } elseif (isset($Filter['field']) && !empty($Filter['field'])) {
+    // Formato antiguo: Filter[field] (sin índice numérico)
     $array_filters[] = array(
       'filter' => array($Filter['field'] => isset($Filter['keyword']) ? $Filter['keyword'] : ''),
       'operator' => isset($Filter['operator']) ? $Filter['operator'] : '='
@@ -93,6 +105,13 @@ if (is_array($array_filters) && !empty($array_filters)) {
     }
   }
 }
+
+// Debug breve: solo filtros finales
+if (!isset($GLOBALS['debug_filters'])) {
+  $GLOBALS['debug_filters'] = [];
+}
+$GLOBALS['debug_filters'][] = "=== REPORTS.PHP (CARGA INICIAL) ===";
+$GLOBALS['debug_filters'][] = "filter_results: " . json_encode($filter_results);
 
 //Group by selected
 $groupby_selected = array();
@@ -331,11 +350,29 @@ if (!isset($GLOBALS['debug_info'])) {
 //reports recordset
 if (isset($row_reports_info['TypeId']) && $row_reports_info['TypeId']==1) {
 
+  // Debug breve: antes de ejecutar
+  if (!isset($GLOBALS['debug_filters'])) {
+    $GLOBALS['debug_filters'] = [];
+  }
+  $GLOBALS['debug_filters'][] = "ANTES class_Recordset:";
+  $GLOBALS['debug_filters'][] = "  Query: " . $row_reports_info['Query'];
+  $GLOBALS['debug_filters'][] = "  filter_results: " . json_encode($filter_results);
+
   // Capturar tiempo de inicio de ejecución
   $query_execution_start = microtime(true);
   
   $array_headers  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], null, null, 1, null, null, $sumby_results);
+  
+  // Debug: después de headers
+  if (!isset($GLOBALS['debug_filters'])) {
+    $GLOBALS['debug_filters'] = [];
+  }
+  $GLOBALS['debug_filters'][] = "DESPUÉS headers (sin filtros): " . (isset($array_headers['info']['total_rows']) ? $array_headers['info']['total_rows'] : 'N/A') . " filas";
+  
   $array_reports  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, $Limit, null, null, $sumby_results);
+  
+  // Debug: después de reports
+  $GLOBALS['debug_filters'][] = "DESPUÉS reports (con filtros): " . (isset($array_reports['info']['total_rows']) ? $array_reports['info']['total_rows'] : 'N/A') . " filas totales, " . (isset($array_reports['data']) ? count($array_reports['data']) : 0) . " filas en página";
   
   // Calcular tiempo de ejecución
   $query_execution_end = microtime(true);

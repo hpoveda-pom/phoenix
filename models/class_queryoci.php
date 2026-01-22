@@ -149,6 +149,14 @@ function class_queryOci($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Li
 	if ($conn) {
 		$stmt = oci_parse($conn, $query);
 
+		// Debug específico para filtros: capturar query SQL final
+		if (!isset($GLOBALS['debug_filters'])) {
+			$GLOBALS['debug_filters'] = [];
+		}
+		$GLOBALS['debug_filters'][] = "=== QUERY SQL EJECUTADO (OCI) ===";
+		$GLOBALS['debug_filters'][] = "SQL: " . $query;
+		$GLOBALS['debug_filters'][] = "ArrayFilter recibido: " . json_encode($ArrayFilter);
+
 		// Manejo de errores en la ejecución
 		try {
 		    if (!oci_execute($stmt)) {
@@ -161,9 +169,22 @@ function class_queryOci($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Li
 		    $headers = [];
 		    while ($results = oci_fetch_assoc($stmt)) {
 		        if ($results) {
-		            $headers = array_keys($results);
+		            if (empty($headers)) {
+		                $headers = array_keys($results);
+		            }
 		            $data[] = $results;
 		        }
+		    }
+		    
+		    // Debug específico: resultados obtenidos
+		    if (!isset($GLOBALS['debug_filters'])) {
+		    	$GLOBALS['debug_filters'] = [];
+		    }
+		    $GLOBALS['debug_filters'][] = "=== RESULTADOS OBTENIDOS (OCI) ===";
+		    $GLOBALS['debug_filters'][] = "Filas obtenidas: " . count($data);
+		    $GLOBALS['debug_filters'][] = "Headers: " . implode(', ', $headers);
+		    if (count($data) > 0) {
+		    	$GLOBALS['debug_filters'][] = "Primera fila: " . json_encode($data[0]);
 		    }
 
 		} catch (Exception $e) {
@@ -174,12 +195,23 @@ function class_queryOci($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Li
 
 		// Total de registros
 		$query_totalrows = "SELECT COUNT(1) AS TOTAL_ROWS FROM (" . $Query . ") tb" . $query_where;
+		
+		// Debug específico: query de conteo
+		if (!isset($GLOBALS['debug_filters'])) {
+			$GLOBALS['debug_filters'] = [];
+		}
+		$GLOBALS['debug_filters'][] = "=== QUERY DE CONTEO (OCI) ===";
+		$GLOBALS['debug_filters'][] = "SQL COUNT: " . $query_totalrows;
+		
 		$countStmt = oci_parse($conn, $query_totalrows);
 		oci_execute($countStmt);
 		$totalRowsResult = oci_fetch_assoc($countStmt);
 
 		$total_rows = $totalRowsResult['TOTAL_ROWS'];
 		$page_rows = count($data);
+		
+		// Debug específico: total de filas
+		$GLOBALS['debug_filters'][] = "Total de filas encontradas: " . $total_rows;
 
 		$total_pages = 0;
 		if ($page_rows > 0) {

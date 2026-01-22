@@ -300,11 +300,15 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
     $msg_error = ''; // Variable to store error messages
 
     try {
-        // Debug: Log de la consulta antes de ejecutarla
-        if (isset($GLOBALS['debug_info'])) {
-            $debug_info = &$GLOBALS['debug_info'];
-            $debug_info[] = "=== Ejecutando consulta SQL ===";
-            $debug_info[] = "Query: " . $query;
+        // Debug breve: solo query SQL y filtros
+        if (!isset($GLOBALS['debug_filters'])) {
+            $GLOBALS['debug_filters'] = [];
+        }
+        $GLOBALS['debug_filters'][] = "SQL EJECUTADO: " . $query;
+        if ($ArrayFilter && !empty($ArrayFilter)) {
+            $GLOBALS['debug_filters'][] = "FILTROS APLICADOS: " . json_encode($ArrayFilter);
+        } else {
+            $GLOBALS['debug_filters'][] = "FILTROS APLICADOS: (NINGUNO)";
         }
         
         // Execute the main query
@@ -317,54 +321,17 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
                 if (!$headers_set) {
                     $headers = array_keys($row);
                     $headers_set = true;
-                    if (isset($GLOBALS['debug_info'])) {
-                        $debug_info[] = "Headers obtenidos de resultado: " . implode(', ', $headers);
-                        $debug_info[] = "Número de columnas: " . count($headers);
-                    }
                 }
                 $data[] = $row;
                 $row_count++;
             }
             $result->free();
             
-            if (isset($GLOBALS['debug_info'])) {
-                $debug_info[] = "Consulta ejecutada exitosamente. Filas obtenidas: " . count($data);
-                if (empty($headers)) {
-                    $debug_info[] = "ADVERTENCIA: No se obtuvieron headers de la consulta";
-                    $debug_info[] = "Query ejecutada: " . $query;
-                    // Intentar obtener headers de la estructura esperada si hay GroupBy
-                    if (!empty($select_GroupBy) && !empty($GroupBy)) {
-                        $debug_info[] = "Intentando obtener headers de la estructura esperada...";
-                        $expected_headers = explode(',', $select_GroupBy);
-                        $expected_headers = array_map('trim', $expected_headers);
-                        $expected_headers[] = 'Cantidad';
-                        if (!empty($select_SumBy)) {
-                            // Extraer el nombre del campo SumBy del alias (puede ser `Suma (campo)` o Suma_campo)
-                            // Buscar todos los aliases que empiecen con Suma
-                            if (preg_match_all('/AS\s+[`"]?Suma\s*\(([^)]+)\)[`"]?/i', $select_SumBy, $matches)) {
-                                foreach ($matches[0] as $match) {
-                                    // Extraer el nombre completo del alias
-                                    if (preg_match('/AS\s+[`"]?([^`"]+)[`"]?/i', $match, $alias_match)) {
-                                        $expected_headers[] = $alias_match[1];
-                                    }
-                                }
-                            } elseif (preg_match_all('/AS\s+(\w+Suma_\w+)/i', $select_SumBy, $matches)) {
-                                // Fallback para formato antiguo Suma_campo
-                                foreach ($matches[1] as $match) {
-                                    $expected_headers[] = $match;
-                                }
-                            }
-                            if (!empty($expected_headers)) {
-                                $debug_info[] = "Campos SumBy detectados: " . implode(', ', array_slice($expected_headers, -count($matches[0])));
-                            }
-                        }
-                        $headers = $expected_headers;
-                        $debug_info[] = "Headers esperados (de estructura): " . implode(', ', $headers);
-                    }
-                } else {
-                    $debug_info[] = "Headers finales: " . implode(', ', $headers);
-                }
+            // Debug breve: solo cantidad de filas
+            if (!isset($GLOBALS['debug_filters'])) {
+                $GLOBALS['debug_filters'] = [];
             }
+            $GLOBALS['debug_filters'][] = "RESULTADO: " . count($data) . " filas obtenidas";
         } else {
             // Si la consulta falla, capturar el error
             $msg_error = $conn->error;
@@ -450,16 +417,16 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
         // Contar grupos únicos
         $select_GroupBy_clean = rtrim($select_GroupBy, ',');
         $query_totalrows = "SELECT COUNT(1) AS TOTAL_ROWS FROM (SELECT " . $select_GroupBy_clean . " FROM (" . $Query . ")tb " . $query_where . " " . $GroupBy . ") AS grouped";
-        
-        if (isset($GLOBALS['debug_info'])) {
-            $debug_info = &$GLOBALS['debug_info'];
-            $debug_info[] = "=== Contando grupos únicos ===";
-            $debug_info[] = "Query de conteo: " . $query_totalrows;
-        }
     } else {
         // Contar todas las filas (sin GroupBy)
         $query_totalrows = "SELECT COUNT(1) AS TOTAL_ROWS FROM (" . $Query . ") AS tb " . $query_where;
     }
+    
+    // Debug breve: query de conteo
+    if (!isset($GLOBALS['debug_filters'])) {
+        $GLOBALS['debug_filters'] = [];
+    }
+    $GLOBALS['debug_filters'][] = "SQL COUNT: " . $query_totalrows;
     
     try {
         $countStmt = $conn->prepare($query_totalrows);
@@ -480,10 +447,11 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
             $total_rows = $totalRowsResult['TOTAL_ROWS'];
             $countStmt->close();
             
-            if (isset($GLOBALS['debug_info'])) {
-                $debug_info = &$GLOBALS['debug_info'];
-                $debug_info[] = "Total de " . ($array_groupby && !empty($GroupBy) ? "grupos" : "filas") . " encontrados: " . $total_rows;
+            // Debug breve: total
+            if (!isset($GLOBALS['debug_filters'])) {
+                $GLOBALS['debug_filters'] = [];
             }
+            $GLOBALS['debug_filters'][] = "TOTAL: " . $total_rows . " filas";
         }
     } catch (mysqli_sql_exception $e) {
         // Capture error and store it in the msg_error variable

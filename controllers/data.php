@@ -80,14 +80,33 @@ if (isset($_GET['unset'])) {
 $filter_selected = array();
 if (isset($_GET['filter_selected'])) {
   $filter_selected = $_GET['filter_selected'];
+  // Si viene como string JSON (desde DataTables AJAX), decodificarlo
+  if (is_string($filter_selected)) {
+    $decoded = json_decode($filter_selected, true);
+    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+      $filter_selected = $decoded;
+    }
+  }
 }
 
 $array_filters = $filter_selected;
 if (is_array($Filter)) {
-  if ($Filter['field']) {
+  // Manejar arrays indexados numéricamente: Filter[0][field], Filter[1][field], etc.
+  if (isset($Filter[0]) && is_array($Filter[0])) {
+    // Es un array indexado: Filter[0][field], Filter[1][field], etc.
+    foreach ($Filter as $filter_index => $filter_item) {
+      if (is_array($filter_item) && isset($filter_item['field']) && !empty($filter_item['field'])) {
+        $array_filters[] = array(
+          'filter' => array($filter_item['field'] => isset($filter_item['keyword']) ? $filter_item['keyword'] : ''),
+          'operator' => isset($filter_item['operator']) ? $filter_item['operator'] : '='
+        );
+      }
+    }
+  } elseif (isset($Filter['field']) && !empty($Filter['field'])) {
+    // Formato antiguo: Filter[field] (sin índice numérico)
     $array_filters[] = array(
-      'filter' => array($Filter['field'] => $Filter['keyword']),
-      'operator' => $Filter['operator']
+      'filter' => array($Filter['field'] => isset($Filter['keyword']) ? $Filter['keyword'] : ''),
+      'operator' => isset($Filter['operator']) ? $Filter['operator'] : '='
     );
   }
 }
@@ -452,6 +471,13 @@ if ($action == "datatables") {
   $GLOBALS['debug_info'] = $error_messages;
   $GLOBALS['debug_detailed'] = false; // Desactivar debug detallado para reducir logs
   $debug_info = &$GLOBALS['debug_info'];
+    // Debug específico y breve para DataTables
+  if (!isset($GLOBALS['debug_filters'])) {
+    $GLOBALS['debug_filters'] = [];
+  }
+  $GLOBALS['debug_filters'][] = "=== DATATABLES AJAX ===";
+  $GLOBALS['debug_filters'][] = "filter_results enviado: " . json_encode($filter_results);
+  
   $debug_info[] = "=== DataTables Request ===";
   $debug_info[] = "GET params: " . json_encode($_GET);
   
@@ -513,12 +539,26 @@ if ($action == "datatables") {
     $debug_info[] = "Reporte ID: " . (isset($row_reports_info['ReportsId']) ? $row_reports_info['ReportsId'] : 'N/A');
     $debug_info[] = "ConnectionId: " . $row_reports_info['ConnectionId'];
     
+    // Debug: Antes de ejecutar class_Recordset
+    if (!isset($GLOBALS['debug_filters'])) {
+      $GLOBALS['debug_filters'] = [];
+    }
+    $GLOBALS['debug_filters'][] = "ANTES class_Recordset:";
+    $GLOBALS['debug_filters'][] = "  Query: " . $row_reports_info['Query'];
+    $GLOBALS['debug_filters'][] = "  filter_results: " . json_encode($filter_results);
+    $GLOBALS['debug_filters'][] = "  start=$start, length=$length";
+    
     // Ejecutar consulta con paginación primero para obtener los headers correctos
     // (especialmente importante cuando hay GroupBy o SumBy, ya que los headers cambian)
     $debug_info[] = "Ejecutando consulta con paginación (start=$start, length=$length)...";
     $debug_info[] = "groupby_results: " . json_encode($groupby_results);
     $debug_info[] = "sumby_results: " . json_encode($sumby_results);
     $array_reports = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, $start, $length, $sumby_results);
+    
+    // Debug: Después de ejecutar class_Recordset
+    $GLOBALS['debug_filters'][] = "DESPUÉS class_Recordset:";
+    $GLOBALS['debug_filters'][] = "  total_rows: " . (isset($array_reports['info']['total_rows']) ? $array_reports['info']['total_rows'] : 'N/A');
+    $GLOBALS['debug_filters'][] = "  filas obtenidas: " . (isset($array_reports['data']) ? count($array_reports['data']) : 0);
     
     if (isset($array_reports['error'])) {
       $debug_info[] = "ERROR en consulta: " . $array_reports['error'];
@@ -684,6 +724,18 @@ if ($action == "datatables") {
     }
     
     $debug_info[] = "Respuesta preparada: " . count($data) . " filas, " . $response['recordsTotal'] . " total";
+    
+    // Debug: respuesta final
+    if (!isset($GLOBALS['debug_filters'])) {
+      $GLOBALS['debug_filters'] = [];
+    }
+    $GLOBALS['debug_filters'][] = "RESPUESTA DATATABLES:";
+    $GLOBALS['debug_filters'][] = "  recordsTotal: " . $response['recordsTotal'];
+    $GLOBALS['debug_filters'][] = "  recordsFiltered: " . $response['recordsFiltered'];
+    $GLOBALS['debug_filters'][] = "  data: " . count($data) . " filas";
+    
+    // Agregar debug a la respuesta para que se vea en el navegador
+    $response['debug_filters'] = $GLOBALS['debug_filters'];
     
     // Validar JSON antes de enviar
     $json_response = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
