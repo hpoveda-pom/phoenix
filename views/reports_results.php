@@ -216,37 +216,164 @@ if ($action == "update" && $form_id == 'editor_query') {
                   </div>
                 </div>
                 
-                <!-- Debug Específico de Filtros -->
+                <!-- Debug Específico de Resultados del Reporte -->
                 <div class="card mb-3">
                   <div class="card-header bg-primary text-white">
-                    <h6 class="mb-0"><i class="fas fa-filter me-2"></i>Debug de Filtros y Queries SQL</h6>
+                    <h6 class="mb-0"><i class="fas fa-filter me-2"></i>Consulta SQL del Reporte</h6>
                   </div>
                   <div class="card-body">
                     <?php 
+                    // Obtener la consulta SQL del reporte
+                    $report_query = isset($Query) ? trim($Query) : '';
+                    $reports_id = isset($row_reports_info['ReportsId']) ? $row_reports_info['ReportsId'] : 0;
+                    $connection_id = isset($row_reports_info['ConnectionId']) ? $row_reports_info['ConnectionId'] : 0;
+                    
                     // Obtener información de debug específica de filtros
                     $debug_filters = isset($GLOBALS['debug_filters']) && is_array($GLOBALS['debug_filters']) ? $GLOBALS['debug_filters'] : [];
                     
-                    if (!empty($debug_filters)) {
+                    // Filtrar solo mensajes relacionados con la consulta SQL del reporte
+                    $filtered_debug = [];
+                    
+                    if (empty($report_query)) {
+                      echo '<div class="alert alert-warning mb-0">No hay consulta SQL del reporte disponible.</div>';
+                    } else {
+                      // Normalizar la consulta del reporte para comparación
+                      // Extraer la parte central de la consulta (lo que está dentro del SELECT ... FROM)
+                      $report_query_normalized = preg_replace('/\s+/', ' ', strtolower(trim($report_query)));
+                      
+                      // Buscar palabras clave únicas de la consulta del reporte (primeras 50 palabras)
+                      $report_keywords = [];
+                      $words = explode(' ', $report_query_normalized);
+                      foreach ($words as $word) {
+                        $word = trim($word);
+                        if (strlen($word) > 3 && !in_array(strtolower($word), ['select', 'from', 'where', 'and', 'or', 'join', 'inner', 'left', 'right', 'outer', 'on', 'as', 'tb', 'a', 'b', 'c', 'd', 'e', 'f', 'g'])) {
+                          $report_keywords[] = $word;
+                          if (count($report_keywords) >= 10) break; // Solo las primeras 10 palabras clave
+                        }
+                      }
+                      
+                      // Buscar el bloque de mensajes que contiene la consulta del reporte
+                      $found_report_block = false;
+                      $report_block_start = -1;
+                      $report_block_end = -1;
+                      
+                      // Primero, encontrar dónde empieza el bloque del reporte
+                      foreach ($debug_filters as $index => $msg) {
+                        if (stripos($msg, 'SQL EJECUTADO') !== false) {
+                          // Normalizar el mensaje para comparación
+                          $msg_normalized = preg_replace('/\s+/', ' ', strtolower($msg));
+                          
+                          // Verificar si este mensaje contiene la consulta del reporte
+                          // Buscar si contiene suficientes palabras clave del reporte
+                          $matches = 0;
+                          foreach ($report_keywords as $keyword) {
+                            if (stripos($msg_normalized, $keyword) !== false) {
+                              $matches++;
+                            }
+                          }
+                          
+                          // Si tiene al menos 3 palabras clave o contiene la consulta completa, es el reporte
+                          if ($matches >= 3 || stripos($msg_normalized, $report_query_normalized) !== false) {
+                            // Verificar que NO sea una consulta del sistema
+                            $is_system = false;
+                            $system_patterns = [
+                              '/\bFROM\s+[`\']?users[`\']?\s/i',
+                              '/\bFROM\s+[`\']?category[`\']?\s/i',
+                              '/\bFROM\s+[`\']?connections[`\']?\s/i',
+                              '/\bFROM\s+[`\']?reports[`\']?\s/i',
+                              '/\bFROM\s+[`\']?types[`\']?\s/i',
+                              '/\bFROM\s+[`\']?pipelines[`\']?\s/i',
+                              '/WHERE\s+a\.ReportsId\s*=\s*\d+/i', // Consultas que buscan por ReportsId (del sistema)
+                              '/WHERE\s+a\.UsersId\s*=\s*\d+/i',   // Consultas que buscan por UsersId (del sistema)
+                            ];
+                            
+                            foreach ($system_patterns as $pattern) {
+                              if (preg_match($pattern, $msg)) {
+                                $is_system = true;
+                                break;
+                              }
+                            }
+                            
+                            if (!$is_system) {
+                              $found_report_block = true;
+                              $report_block_start = $index;
+                              break;
+                            }
+                          }
+                        }
+                      }
+                      
+                      // Si encontramos el bloque, extraer todos los mensajes relacionados
+                      if ($found_report_block && $report_block_start >= 0) {
+                        // Buscar hasta encontrar el siguiente SQL EJECUTADO o hasta el final
+                        for ($i = $report_block_start; $i < count($debug_filters); $i++) {
+                          $msg = $debug_filters[$i];
+                          
+                          // Si encontramos otro SQL EJECUTADO que no es del reporte, parar
+                          if ($i > $report_block_start && stripos($msg, 'SQL EJECUTADO') !== false) {
+                            // Verificar si es del sistema
+                            $is_system = false;
+                            foreach (['users', 'category', 'connections', 'reports', 'types', 'pipelines'] as $table) {
+                              if (preg_match('/\bFROM\s+[`\']?' . preg_quote($table, '/') . '[`\']?\s/i', $msg)) {
+                                $is_system = true;
+                                break;
+                              }
+                            }
+                            if (!$is_system) {
+                              // Es otra consulta del reporte, continuar
+                              continue;
+                            } else {
+                              // Es del sistema, parar aquí
+                              break;
+                            }
+                          }
+                          
+                          $filtered_debug[] = $msg;
+                        }
+                      }
+                      
+                      // Si no encontramos en debug_filters, mostrar la consulta directamente
+                      if (empty($filtered_debug) && !empty($report_query)) {
+                        $filtered_debug[] = 'SQL EJECUTADO: ' . $report_query;
+                        if (isset($array_reports['info']['total_rows'])) {
+                          $filtered_debug[] = 'TOTAL: ' . number_format($array_reports['info']['total_rows']) . ' filas';
+                        }
+                        if (isset($array_reports['info']['page_rows'])) {
+                          $filtered_debug[] = 'RESULTADO: ' . number_format($array_reports['info']['page_rows']) . ' filas obtenidas';
+                        }
+                        if (isset($array_reports['error']) && !empty($array_reports['error'])) {
+                          $filtered_debug[] = 'ERROR: ' . $array_reports['error'];
+                        }
+                      }
+                    }
+                    
+                    if (!empty($filtered_debug)) {
                       echo '<div class="table-responsive">';
                       echo '<table class="table table-sm table-bordered mb-0">';
                       echo '<thead class="table-secondary">';
-                      echo '<tr><th style="width: 50px;">#</th><th>Información</th></tr>';
+                      echo '<tr><th style="width: 50px;">#</th><th>Consulta SQL del Reporte</th></tr>';
                       echo '</thead>';
                       echo '<tbody>';
-                      foreach ($debug_filters as $index => $msg) {
-                        $is_sql = (stripos($msg, 'SQL:') !== false || stripos($msg, 'SQL COUNT:') !== false);
-                        $is_error = (stripos($msg, 'error') !== false || stripos($msg, 'exception') !== false);
+                      foreach ($filtered_debug as $index => $msg) {
+                        $is_sql = (stripos($msg, 'SQL') !== false);
+                        $is_error = (stripos($msg, 'error') !== false || stripos($msg, 'exception') !== false || stripos($msg, 'ERROR') !== false);
+                        $is_result = (stripos($msg, 'RESULTADO') !== false || stripos($msg, 'TOTAL') !== false || stripos($msg, 'filas') !== false);
+                        $is_filter = (stripos($msg, 'FILTROS') !== false);
                         $row_class = '';
                         if ($is_error) {
                           $row_class = 'table-danger';
                         } elseif ($is_sql) {
                           $row_class = 'table-info';
+                        } elseif ($is_result) {
+                          $row_class = 'table-success';
+                        } elseif ($is_filter) {
+                          $row_class = 'table-warning';
                         }
                         echo '<tr class="' . $row_class . '">';
                         echo '<td class="text-center">' . ($index + 1) . '</td>';
                         if ($is_sql) {
                           // Para queries SQL, mostrar en un formato más legible
-                          echo '<td><pre style="font-size: 10px; margin: 0; white-space: pre-wrap; word-wrap: break-word;">' . htmlspecialchars($msg) . '</pre></td>';
+                          echo '<td><pre style="font-size: 11px; margin: 0; white-space: pre-wrap; word-wrap: break-word; background: #f8f9fa; padding: 8px; border-radius: 4px;">' . htmlspecialchars($msg) . '</pre></td>';
                         } else {
                           echo '<td><code style="font-size: 11px;">' . htmlspecialchars($msg) . '</code></td>';
                         }
@@ -256,43 +383,11 @@ if ($action == "update" && $form_id == 'editor_query') {
                       echo '</table>';
                       echo '</div>';
                     } else {
-                      echo '<div class="alert alert-warning mb-0">No hay información de debug de filtros disponible. Recarga la página con filtros en la URL.</div>';
+                      echo '<div class="alert alert-info mb-0">No hay información de debug disponible. El reporte se ejecutó correctamente.</div>';
                     }
                     ?>
                   </div>
                 </div>
-                
-                <!-- Log de Debug General (si existe) -->
-                <?php 
-                $debug_messages = isset($debug_info) && is_array($debug_info) ? $debug_info : (isset($GLOBALS['debug_info']) && is_array($GLOBALS['debug_info']) ? $GLOBALS['debug_info'] : []);
-                if (!empty($debug_messages)): 
-                ?>
-                <div class="card">
-                  <div class="card-header bg-body-tertiary">
-                    <h6 class="mb-0"><i class="fas fa-list me-2"></i>Log de Debug General</h6>
-                  </div>
-                  <div class="card-body">
-                    <div class="table-responsive">
-                      <table class="table table-sm table-bordered mb-0">
-                        <thead class="table-secondary">
-                          <tr><th style="width: 50px;">#</th><th>Mensaje</th></tr>
-                        </thead>
-                        <tbody>
-                          <?php foreach ($debug_messages as $index => $msg): 
-                            $is_error = (stripos($msg, 'error') !== false || stripos($msg, 'exception') !== false || stripos($msg, 'fatal') !== false);
-                            $row_class = $is_error ? 'table-danger' : '';
-                          ?>
-                          <tr class="<?php echo $row_class; ?>">
-                            <td class="text-center"><?php echo ($index + 1); ?></td>
-                            <td><code style="font-size: 11px;"><?php echo htmlspecialchars($msg); ?></code></td>
-                          </tr>
-                          <?php endforeach; ?>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-                <?php endif; ?>
                 
                 <!-- Información de DataTables (si hay error) -->
                 <div id="datatables-debug" class="card mt-3" style="display: none;">

@@ -1,4 +1,7 @@
 <?php
+require_once('class_connclickhouse.php');
+require_once('class_connmysqlissl.php');
+
 function class_Connections($Id){
     global $row_config, $conn_phoenix;
     
@@ -110,48 +113,160 @@ function class_Connections($Id){
                         if ($debug_detailed) {
                             $debug_info[] = "  → Database determinada: '$database' (ServiceName: '$service_name', Schema: '$schema')";
                         }
+                        
+                        // Validar que la base de datos no esté vacía
+                        if (!empty($database)) {
+                            if ($debug_detailed) {
+                                $debug_info[] = "  → Intentando conectar a: $hostname:$port/$database (usuario: $username)";
+                            }
+                            // Crear la conexión solo si todos los datos son válidos
+                            $conn = class_connMysqli($hostname, $port, $username, $password, $database);
+                            
+                            if ($conn) {
+                                if ($debug_detailed) {
+                                    $debug_info[] = "  ✓ Conexión establecida exitosamente";
+                                }
+                            } else {
+                                $debug_info[] = "  ✗ Error al establecer conexión para ConnectionId: $Id";
+                                
+                                // Si la conexión falla y es ID 1 o 2, intentar con la base de datos de config.php
+                                if (($Id == 1 || $Id == 2) && isset($row_config['db_name']) && !empty(trim($row_config['db_name']))) {
+                                    $db_name = trim($row_config['db_name']);
+                                    // Solo intentar con config.php si el Schema de la tabla es diferente
+                                    if ($database !== $db_name) {
+                                        $debug_info[] = "  → Intentando fallback con base de datos de config.php: $db_name";
+                                        $conn = class_connMysqli($hostname, $port, $username, $password, $db_name);
+                                        if ($conn) {
+                                            if ($debug_detailed) {
+                                                $debug_info[] = "  ✓ Conexión establecida con fallback";
+                                            }
+                                        } else {
+                                            $debug_info[] = "  ✗ Error también con fallback";
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            $debug_info[] = "  ✗ Base de datos vacía o no determinada";
+                        }
+                    } elseif ($row['Connector'] == 'mysqlissl') {
+                        // Para MySQLi con SSL, usar ServiceName como database si está disponible, sino Schema
+                        if (!empty($service_name)) {
+                            $database = $service_name;
+                        } elseif (!empty($schema)) {
+                            $database = $schema;
+                        } else {
+                            $database = '';
+                        }
+                        if ($debug_detailed) {
+                            $debug_info[] = "  → Database determinada: '$database' (ServiceName: '$service_name', Schema: '$schema')";
+                        }
+                        
+                        // Validar que la base de datos no esté vacía
+                        if (!empty($database)) {
+                            if ($debug_detailed) {
+                                $debug_info[] = "  → Intentando conectar a MySQL con SSL: $hostname:$port/$database (usuario: $username)";
+                            }
+                            
+                            // Por defecto, verificar certificado SSL (puede cambiarse si es necesario)
+                            $ssl_verify = true;
+                            // Si se necesita, se pueden agregar rutas a certificados SSL aquí
+                            $ssl_ca = null;
+                            $ssl_cert = null;
+                            $ssl_key = null;
+                            $ssl_cipher = null;
+                            
+                            // Crear la conexión con SSL
+                            $conn = class_connMysqliSSL($hostname, $port, $username, $password, $database, $ssl_ca, $ssl_cert, $ssl_key, $ssl_cipher, $ssl_verify);
+                            
+                            if ($conn) {
+                                if ($debug_detailed) {
+                                    $debug_info[] = "  ✓ Conexión MySQL con SSL establecida exitosamente";
+                                }
+                            } else {
+                                $debug_info[] = "  ✗ Error al establecer conexión MySQL con SSL para ConnectionId: $Id";
+                                // Intentar sin verificar certificado si falla
+                                if ($ssl_verify) {
+                                    $debug_info[] = "  → Intentando sin verificar certificado SSL";
+                                    $conn = class_connMysqliSSL($hostname, $port, $username, $password, $database, $ssl_ca, $ssl_cert, $ssl_key, $ssl_cipher, false);
+                                    if ($conn) {
+                                        if ($debug_detailed) {
+                                            $debug_info[] = "  ✓ Conexión establecida sin verificar certificado";
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            $debug_info[] = "  ✗ Base de datos vacía o no determinada";
+                        }
+                    } elseif ($row['Connector'] == 'clickhouse') {
+                        // Para ClickHouse, usar Schema como database (o ServiceName como fallback)
+                        if (!empty($schema)) {
+                            $database = $schema;
+                        } elseif (!empty($service_name)) {
+                            $database = $service_name;
+                        } else {
+                            $database = 'default';
+                        }
+                        
+                        // Puerto por defecto para ClickHouse: 8443 (HTTPS) o 8123 (HTTP)
+                        if (empty($port)) {
+                            $port = '8443'; // Por defecto HTTPS para ClickHouse Cloud
+                        }
+                        
+                        if ($debug_detailed) {
+                            $debug_info[] = "  → Database determinada: '$database' (Schema: '$schema', ServiceName: '$service_name')";
+                            $debug_info[] = "  → Intentando conectar a ClickHouse: $hostname:$port/$database (usuario: $username)";
+                        }
+                        
+                        // ClickHouse usa HTTPS por defecto (secure = true)
+                        $secure = true;
+                        $conn = class_connClickHouse($hostname, $port, $username, $password, $database, $secure);
+                        
+                        if ($conn) {
+                            if ($debug_detailed) {
+                                $debug_info[] = "  ✓ Conexión ClickHouse establecida exitosamente";
+                            }
+                        } else {
+                            $debug_info[] = "  ✗ Error al establecer conexión ClickHouse para ConnectionId: $Id";
+                            // Intentar con HTTP si HTTPS falla
+                            if ($secure) {
+                                $debug_info[] = "  → Intentando con HTTP (puerto 8123)";
+                                $port = '8123';
+                                $secure = false;
+                                $conn = class_connClickHouse($hostname, $port, $username, $password, $database, $secure);
+                                if ($conn) {
+                                    if ($debug_detailed) {
+                                        $debug_info[] = "  ✓ Conexión ClickHouse establecida con HTTP";
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         // Para otros conectores, usar ServiceName
                         $database = !empty($service_name) ? $service_name : '';
                         if ($debug_detailed) {
                             $debug_info[] = "  → Database determinada: '$database' (ServiceName: '$service_name')";
                         }
-                    }
-                    
-                    // Validar que la base de datos no esté vacía
-                    if (!empty($database)) {
-                        if ($debug_detailed) {
-                            $debug_info[] = "  → Intentando conectar a: $hostname:$port/$database (usuario: $username)";
-                        }
-                        // Crear la conexión solo si todos los datos son válidos
-                        $conn = class_connMysqli($hostname, $port, $username, $password, $database);
                         
-                        if ($conn) {
+                        // Validar que la base de datos no esté vacía
+                        if (!empty($database)) {
                             if ($debug_detailed) {
-                                $debug_info[] = "  ✓ Conexión establecida exitosamente";
+                                $debug_info[] = "  → Intentando conectar a: $hostname:$port/$database (usuario: $username)";
+                            }
+                            // Crear la conexión solo si todos los datos son válidos
+                            $conn = class_connMysqli($hostname, $port, $username, $password, $database);
+                            
+                            if ($conn) {
+                                if ($debug_detailed) {
+                                    $debug_info[] = "  ✓ Conexión establecida exitosamente";
+                                }
+                            } else {
+                                $debug_info[] = "  ✗ Error al establecer conexión para ConnectionId: $Id";
                             }
                         } else {
-                            $debug_info[] = "  ✗ Error al establecer conexión para ConnectionId: $Id";
-                            
-                            // Si la conexión falla y es ID 1 o 2, intentar con la base de datos de config.php
-                            if (($Id == 1 || $Id == 2) && isset($row_config['db_name']) && !empty(trim($row_config['db_name']))) {
-                                $db_name = trim($row_config['db_name']);
-                                // Solo intentar con config.php si el Schema de la tabla es diferente
-                                if ($database !== $db_name) {
-                                    $debug_info[] = "  → Intentando fallback con base de datos de config.php: $db_name";
-                                    $conn = class_connMysqli($hostname, $port, $username, $password, $db_name);
-                                    if ($conn) {
-                                        if ($debug_detailed) {
-                                            $debug_info[] = "  ✓ Conexión establecida con fallback";
-                                        }
-                                    } else {
-                                        $debug_info[] = "  ✗ Error también con fallback";
-                                    }
-                                }
-                            }
+                            $debug_info[] = "  ✗ Base de datos vacía o no determinada";
                         }
-                    } else {
-                        $debug_info[] = "  ✗ Base de datos vacía o no determinada";
                     }
                 }
             } else {

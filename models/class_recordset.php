@@ -1,22 +1,66 @@
 <?php
+require_once('class_queryclickhouse.php');
+
 function class_Recordset($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start = null, $length = null, $SumBy = null){
 	$results = null;
+	
+	// Obtener el tipo de conector desde la base de datos
+	global $conn_phoenix, $row_config;
+	$connector_type = null;
+	
+	// Intentar obtener el conector desde la tabla connections
+	if (isset($conn_phoenix) && $conn_phoenix instanceof mysqli && !$conn_phoenix->connect_error) {
+		$stmt = $conn_phoenix->prepare("SELECT Connector FROM connections WHERE ConnectionId = ? AND Status = 1");
+		if ($stmt) {
+			$stmt->bind_param('i', $ConnectionId);
+			$stmt->execute();
+			$result = $stmt->get_result();
+			if ($result && $row = $result->fetch_assoc()) {
+				$connector_type = isset($row['Connector']) ? strtolower(trim($row['Connector'])) : null;
+			}
+			$stmt->close();
+		}
+	}
+	
+	// Si no se pudo obtener el conector, usar valores por defecto según ConnectionId
+	if (!$connector_type) {
+		switch ($ConnectionId) {
+			case '1': //phoenix
+			case 1:
+			case '2': //phoenix DW
+			case 2:
+				$connector_type = 'mysqli';
+				break;
+			case '3':
+			case 3:
+				$connector_type = 'oci';
+				break;
+			default:
+				$connector_type = 'mysqli'; // Por defecto MySQLi
+				break;
+		}
+	}
 
-	switch ($ConnectionId) {
-		case '1': //phoenix
-		case 1:
+	// Seleccionar la función de consulta según el tipo de conector
+	switch ($connector_type) {
+		case 'mysqli':
+		case 'mysql':
+		case 'mariadb':
 			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
 			break;
-		case '2': //phoenix DW
-		case 2:
-			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
+		case 'mysqlissl':
+			require_once('class_querymysqlissl.php');
+			$results = class_queryMysqliSSL($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
 			break;
-		case '3':
-		case 3:
+		case 'oci':
+		case 'oracle':
 			$results = class_queryOci($ConnectionId, $Query, $Filter, $GroupBy, $Limit);
 			break;
+		case 'clickhouse':
+			$results = class_queryClickHouse($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
+			break;
 		default:
-			// Si no coincide con ningún caso, intentar con MySQLi por defecto
+			// Por defecto intentar con MySQLi
 			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
 			break;
 	}

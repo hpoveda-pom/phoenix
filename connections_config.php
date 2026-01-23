@@ -181,8 +181,10 @@ if ($result) {
               <label class="form-label">Connector</label>
               <select class="form-select" name="connector">
                 <option value="mysqli" <?php echo (!$edit_data || $edit_data['Connector'] == 'mysqli') ? 'selected' : ''; ?>>MySQLi</option>
+                <option value="mysqlissl" <?php echo ($edit_data && $edit_data['Connector'] == 'mysqlissl') ? 'selected' : ''; ?>>MySQLi con SSL</option>
                 <option value="oci" <?php echo ($edit_data && $edit_data['Connector'] == 'oci') ? 'selected' : ''; ?>>Oracle (OCI)</option>
                 <option value="pdo" <?php echo ($edit_data && $edit_data['Connector'] == 'pdo') ? 'selected' : ''; ?>>PDO</option>
+                <option value="clickhouse" <?php echo ($edit_data && $edit_data['Connector'] == 'clickhouse') ? 'selected' : ''; ?>>ClickHouse</option>
               </select>
             </div>
             

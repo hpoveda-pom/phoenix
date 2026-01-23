@@ -2,7 +2,11 @@
 require_once('../models/class_recordset.php');
 require_once('../models/class_connections.php');
 require_once('../models/class_querymysqli.php');
+require_once('../models/class_querymysqlissl.php');
+require_once('../models/class_queryclickhouse.php');
 require_once('../models/class_connmysqli.php');
+require_once('../models/class_connmysqlissl.php');
+require_once('../models/class_connclickhouse.php');
 
 // Verificar si hay una búsqueda
 $search_query = isset($_GET['query']) ? $_GET['query'] : '';
