@@ -329,6 +329,226 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
     exit;
 }
 
+// Endpoint AJAX para obtener lista de tablas o views
+if (isset($_GET['action']) && $_GET['action'] === 'get_tables_views' && isset($_GET['id']) && isset($_GET['type'])) {
+    require_once('config.php');
+    require_once('conn/phoenix.php');
+    require_once('models/class_connections.php');
+    
+    $connection_id = intval($_GET['id']);
+    $type = $_GET['type']; // 'tables' o 'views'
+    
+    ob_clean();
+    
+    $items = [];
+    $error = null;
+    
+    try {
+        global $conn_phoenix;
+        $result = $conn_phoenix->query("SELECT Connector, Hostname, Port, Username, Password, ServiceName, `Schema` FROM connections WHERE ConnectionId = $connection_id");
+        if ($result && $row = $result->fetch_assoc()) {
+            $connector = strtolower(trim($row['Connector']));
+            $conn = class_Connections($connection_id);
+            
+            if ($conn) {
+                if ($connector == 'mysqli' || $connector == 'mysqlissl' || $connector == 'mysql' || $connector == 'mariadb') {
+                    $database = !empty($row['Schema']) ? $row['Schema'] : (!empty($row['ServiceName']) ? $row['ServiceName'] : '');
+                    if ($database) {
+                        if ($type === 'tables') {
+                            $query = "SELECT table_name as name FROM information_schema.tables WHERE table_schema = '" . $conn->real_escape_string($database) . "' AND table_type = 'BASE TABLE' ORDER BY table_name";
+                        } else {
+                            $query = "SELECT table_name as name FROM information_schema.views WHERE table_schema = '" . $conn->real_escape_string($database) . "' ORDER BY table_name";
+                        }
+                        $result_items = $conn->query($query);
+                        if ($result_items) {
+                            while ($item_row = $result_items->fetch_assoc()) {
+                                $items[] = $item_row['name'];
+                            }
+                        }
+                    }
+                } elseif ($connector == 'clickhouse') {
+                    $database = !empty($row['Schema']) ? $row['Schema'] : (!empty($row['ServiceName']) ? $row['ServiceName'] : 'default');
+                    require_once('models/class_connclickhouse.php');
+                    
+                    if ($type === 'tables') {
+                        $query = "SELECT name FROM system.tables WHERE database = '" . addslashes($database) . "' AND engine NOT LIKE '%View%' ORDER BY name";
+                    } else {
+                        $query = "SELECT name FROM system.tables WHERE database = '" . addslashes($database) . "' AND engine LIKE '%View%' ORDER BY name";
+                    }
+                    $result_items = class_clickhouse_query($conn, $query, 'JSON', $error_info);
+                    if ($result_items !== false) {
+                        if (isset($result_items['data']) && !empty($result_items['data'])) {
+                            foreach ($result_items['data'] as $item) {
+                                $items[] = $item['name'];
+                            }
+                        } elseif (is_array($result_items) && !empty($result_items)) {
+                            foreach ($result_items as $item) {
+                                if (isset($item['name'])) {
+                                    $items[] = $item['name'];
+                                }
+                            }
+                        }
+                    }
+                } elseif ($connector == 'sqlserver' || $connector == 'mssql') {
+                    $database = !empty($row['Schema']) ? $row['Schema'] : (!empty($row['ServiceName']) ? $row['ServiceName'] : '');
+                    if ($database && $conn instanceof PDO) {
+                        if ($type === 'tables') {
+                            $query = "SELECT TABLE_NAME as name FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_CATALOG = '" . str_replace("'", "''", $database) . "' ORDER BY TABLE_NAME";
+                        } else {
+                            $query = "SELECT TABLE_NAME as name FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_CATALOG = '" . str_replace("'", "''", $database) . "' ORDER BY TABLE_NAME";
+                        }
+                        $result_items = $conn->query($query);
+                        if ($result_items) {
+                            while ($item_row = $result_items->fetch(PDO::FETCH_ASSOC)) {
+                                $items[] = $item_row['name'];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch (Exception $e) {
+        $error = $e->getMessage();
+    }
+    
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'success' => $error === null,
+        'items' => $items,
+        'error' => $error
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    
+    ob_end_flush();
+    exit;
+}
+
+// Endpoint AJAX para crear reportes desde tablas/views
+if (isset($_POST['action']) && $_POST['action'] === 'create_reports_from_tables') {
+    require_once('config.php');
+    require_once('conn/phoenix.php');
+    
+    ob_clean();
+    
+    // Obtener UsersId de la sesión
+    $UsersId = null;
+    if (isset($_SESSION['UsersId'])) {
+        $UsersId = intval($_SESSION['UsersId']);
+    }
+    
+    if (empty($UsersId)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Usuario no autenticado',
+            'created' => 0
+        ], JSON_UNESCAPED_UNICODE);
+        ob_end_flush();
+        exit;
+    }
+    
+    $connection_id = intval($_POST['connection_id'] ?? 0);
+    $category_id = intval($_POST['category_id'] ?? 0);
+    $tables_views = json_decode($_POST['tables_views'] ?? '[]', true);
+    $type = $_POST['type'] ?? 'tables'; // 'tables' o 'views'
+    
+    $created = 0;
+    $errors = [];
+    
+    if (empty($connection_id) || empty($category_id) || empty($tables_views)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Datos incompletos',
+            'created' => 0
+        ], JSON_UNESCAPED_UNICODE);
+        ob_end_flush();
+        exit;
+    }
+    
+    // Obtener información de la conexión para construir el query correcto
+    $conn_info_result = $conn_phoenix->query("SELECT Connector, `Schema`, ServiceName FROM connections WHERE ConnectionId = $connection_id");
+    if (!$conn_info_result) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error al obtener información de la conexión: ' . $conn_phoenix->error,
+            'created' => 0
+        ], JSON_UNESCAPED_UNICODE);
+        ob_end_flush();
+        exit;
+    }
+    
+    $conn_info = $conn_info_result->fetch_assoc();
+    if (!$conn_info) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Conexión no encontrada',
+            'created' => 0
+        ], JSON_UNESCAPED_UNICODE);
+        ob_end_flush();
+        exit;
+    }
+    
+    $connector = strtolower(trim($conn_info['Connector'] ?? ''));
+    $database = !empty($conn_info['Schema']) ? $conn_info['Schema'] : (!empty($conn_info['ServiceName']) ? $conn_info['ServiceName'] : '');
+    
+    foreach ($tables_views as $table_view_name) {
+        $table_view_name = trim($table_view_name);
+        if (empty($table_view_name)) continue;
+        
+        // Escapar nombre de tabla/view para evitar SQL injection
+        $escaped_table_name = str_replace("`", "``", $table_view_name);
+        $escaped_database = str_replace("`", "``", $database);
+        
+        // Construir query según el tipo de conexión
+        $query = "SELECT * FROM ";
+        if ($connector == 'clickhouse') {
+            $query .= "`" . $escaped_database . "`.`" . $escaped_table_name . "`";
+        } else {
+            $query .= "`" . $escaped_table_name . "`";
+        }
+        
+        // Insertar reporte
+        $title = $table_view_name;
+        $description = "Reporte generado automáticamente desde " . ($type === 'tables' ? 'tabla' : 'vista') . ": " . $table_view_name;
+        $order = 0;
+        $type_id = 1; // Tipo: Reporte
+        $version = '';
+        $layout_grid_class = '';
+        $periodic = '';
+        $convention_status = 1;
+        $masking_status = 1;
+        $status = 1;
+        
+        $sql = "INSERT INTO reports (Title, Description, CategoryId, `Order`, TypeId, UsersId, ConnectionId, Query, Version, LayoutGridClass, Periodic, ConventionStatus, MaskingStatus, Status, ParentId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
+        $stmt = $conn_phoenix->prepare($sql);
+        if ($stmt === false) {
+            $errors[] = "Error al preparar consulta para $table_view_name: " . $conn_phoenix->error;
+        } else {
+            $stmt->bind_param('ssiiiiissssiii', $title, $description, $category_id, $order, $type_id, $UsersId, $connection_id, $query, $version, $layout_grid_class, $periodic, $convention_status, $masking_status, $status);
+            if ($stmt->execute()) {
+                $created++;
+            } else {
+                $errors[] = "Error al crear reporte para $table_view_name: " . $stmt->error;
+            }
+            $stmt->close();
+        }
+    }
+    
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'success' => $created > 0,
+        'created' => $created,
+        'total' => count($tables_views),
+        'errors' => $errors,
+        'message' => $created > 0 ? "Se crearon $created de " . count($tables_views) . " reportes exitosamente." : "No se pudo crear ningún reporte."
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    
+    ob_end_flush();
+    exit;
+}
+
 require_once('header.php');
 
 $action = isset($_GET['action']) ? $_GET['action'] : 'list';
@@ -460,6 +680,15 @@ $result = $conn_phoenix->query("SELECT * FROM connections ORDER BY Title ASC");
 if ($result) {
     while ($row = $result->fetch_assoc()) {
         $connections[] = $row;
+    }
+}
+
+// Obtener categorías para el modal
+$categories = [];
+$categories_result = $conn_phoenix->query("SELECT CategoryId, Title, ParentId FROM category WHERE IdType = 1 AND Status = 1 ORDER BY Title ASC");
+if ($categories_result) {
+    while ($cat_row = $categories_result->fetch_assoc()) {
+        $categories[] = $cat_row;
     }
 }
 ?>
@@ -611,12 +840,12 @@ if ($result) {
                 <td><?php echo htmlspecialchars($conn['Username'] ?? 'N/A'); ?></td>
                 <td><?php echo htmlspecialchars($conn['Schema'] ?? 'N/A'); ?></td>
                 <td>
-                  <span class="connection-stats-tables" data-connection-id="<?php echo $conn['ConnectionId']; ?>" title="Cargando...">
+                  <span class="connection-stats-tables" data-connection-id="<?php echo $conn['ConnectionId']; ?>" title="Cargando..." style="cursor: pointer;">
                     <span class="spinner-border spinner-border-sm text-secondary" style="width: 12px; height: 12px;" role="status"></span>
                   </span>
                 </td>
                 <td>
-                  <span class="connection-stats-views" data-connection-id="<?php echo $conn['ConnectionId']; ?>" title="Cargando...">
+                  <span class="connection-stats-views" data-connection-id="<?php echo $conn['ConnectionId']; ?>" title="Cargando..." style="cursor: pointer;">
                     <span class="spinner-border spinner-border-sm text-secondary" style="width: 12px; height: 12px;" role="status"></span>
                   </span>
                 </td>
@@ -698,7 +927,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.error) {
                         tablesEl.innerHTML = '<span class="text-muted" title="Error: ' + data.error + '">-</span>';
                     } else {
-                        tablesEl.innerHTML = '<span class="badge bg-info" title="Tablas">' + data.tables + '</span>';
+                        tablesEl.innerHTML = '<span class="badge bg-info clickable-badge" data-connection-id="' + connectionId + '" data-type="tables" title="Click para crear reportes desde tablas" style="cursor: pointer;">' + data.tables + '</span>';
                     }
                 }
                 
@@ -708,7 +937,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.error) {
                         viewsEl.innerHTML = '<span class="text-muted" title="Error: ' + data.error + '">-</span>';
                     } else {
-                        viewsEl.innerHTML = '<span class="badge bg-secondary" title="Views">' + data.views + '</span>';
+                        viewsEl.innerHTML = '<span class="badge bg-secondary clickable-badge" data-connection-id="' + connectionId + '" data-type="views" title="Click para crear reportes desde views" style="cursor: pointer;">' + data.views + '</span>';
                     }
                 }
                 
@@ -986,7 +1215,194 @@ if (typeof jQuery !== 'undefined') {
             ]
         });
     });
+    
+    // Manejar clics en badges de tablas/views (usando event delegation)
+    document.addEventListener('click', function(e) {
+        const badge = e.target.closest('.clickable-badge');
+        if (badge) {
+            const connectionId = badge.getAttribute('data-connection-id');
+            const type = badge.getAttribute('data-type'); // 'tables' o 'views'
+            
+            // Abrir modal
+            const modal = new bootstrap.Modal(document.getElementById('tablesViewsModal'));
+            document.getElementById('modalConnectionId').value = connectionId;
+            document.getElementById('modalType').value = type;
+            document.getElementById('modalTitle').textContent = type === 'tables' ? 'Crear Reportes desde Tablas' : 'Crear Reportes desde Views';
+            document.getElementById('tablesViewsList').innerHTML = '<div class="text-center p-3"><span class="spinner-border spinner-border-sm"></span> Cargando...</div>';
+            
+            // Cargar tablas/views
+            fetch('connections_config.php?action=get_tables_views&id=' + connectionId + '&type=' + type)
+                .then(response => response.json())
+                .then(data => {
+                    const listContainer = document.getElementById('tablesViewsList');
+                    if (data.success && data.items && data.items.length > 0) {
+                        let html = '<div class="mb-3"><button type="button" class="btn btn-sm btn-outline-primary" id="selectAllBtn">Seleccionar Todos</button> <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllBtn">Deseleccionar Todos</button></div>';
+                        html += '<div style="max-height: 400px; overflow-y: auto;">';
+                        data.items.forEach(function(item) {
+                            html += '<div class="form-check mb-2">';
+                            html += '<input class="form-check-input table-view-checkbox" type="checkbox" value="' + item.replace(/"/g, '&quot;') + '" id="item_' + item.replace(/[^a-zA-Z0-9]/g, '_') + '">';
+                            html += '<label class="form-check-label" for="item_' + item.replace(/[^a-zA-Z0-9]/g, '_') + '">' + item + '</label>';
+                            html += '</div>';
+                        });
+                        html += '</div>';
+                        listContainer.innerHTML = html;
+                        
+                        // Manejar select all/deselect all
+                        document.getElementById('selectAllBtn').addEventListener('click', function() {
+                            document.querySelectorAll('.table-view-checkbox').forEach(function(cb) {
+                                cb.checked = true;
+                            });
+                        });
+                        document.getElementById('deselectAllBtn').addEventListener('click', function() {
+                            document.querySelectorAll('.table-view-checkbox').forEach(function(cb) {
+                                cb.checked = false;
+                            });
+                        });
+                    } else {
+                        listContainer.innerHTML = '<div class="alert alert-warning">No se encontraron ' + (type === 'tables' ? 'tablas' : 'views') + ' o hubo un error al cargarlas.</div>';
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('tablesViewsList').innerHTML = '<div class="alert alert-danger">Error al cargar las ' + (type === 'tables' ? 'tablas' : 'views') + '.</div>';
+                });
+            
+            modal.show();
+        }
+    });
+    
+    // Manejar creación de reportes (usando event delegation)
+    document.addEventListener('click', function(e) {
+        // Verificar si el click fue en el botón o en un elemento dentro del botón
+        const btn = e.target.closest('#createReportsBtn');
+        if (btn) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('Botón crear reportes clickeado');
+            
+            const connectionId = document.getElementById('modalConnectionId').value;
+            const type = document.getElementById('modalType').value;
+            const categoryId = document.getElementById('modalCategoryId').value;
+            const selectedItems = [];
+            
+            document.querySelectorAll('.table-view-checkbox:checked').forEach(function(cb) {
+                selectedItems.push(cb.value);
+            });
+            
+            console.log('Datos:', { connectionId, type, categoryId, selectedItems });
+            
+            if (!categoryId) {
+                alert('Por favor seleccione una categoría');
+                return;
+            }
+            
+            if (selectedItems.length === 0) {
+                alert('Por favor seleccione al menos una ' + (type === 'tables' ? 'tabla' : 'view'));
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar loading
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creando...';
+            
+            // Crear reportes
+            const formData = new FormData();
+            formData.append('action', 'create_reports_from_tables');
+            formData.append('connection_id', connectionId);
+            formData.append('category_id', categoryId);
+            formData.append('type', type);
+            formData.append('tables_views', JSON.stringify(selectedItems));
+            
+            console.log('Enviando petición...');
+            
+            fetch('connections_config.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                console.log('Respuesta recibida:', response.status);
+                if (!response.ok) {
+                    throw new Error('Error en la respuesta del servidor: ' + response.status);
+                }
+                return response.text().then(text => {
+                    console.log('Respuesta texto:', text);
+                    try {
+                        return JSON.parse(text);
+                    } catch (e) {
+                        console.error('Error al parsear JSON:', e, 'Texto:', text);
+                        throw new Error('Respuesta no válida del servidor');
+                    }
+                });
+            })
+            .then(data => {
+                console.log('Datos recibidos:', data);
+                if (data.success) {
+                    alert('Se crearon ' + data.created + ' de ' + data.total + ' reportes exitosamente.');
+                    if (data.errors && data.errors.length > 0) {
+                        console.warn('Errores:', data.errors);
+                    }
+                    // Cerrar modal y recargar página
+                    const modalInstance = bootstrap.Modal.getInstance(document.getElementById('tablesViewsModal'));
+                    if (modalInstance) {
+                        modalInstance.hide();
+                    }
+                    window.location.reload();
+                } else {
+                    alert('Error al crear los reportes: ' + (data.message || 'Verifique la consola para más detalles.'));
+                    console.error(data);
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }
+            })
+            .catch(error => {
+                alert('Error al crear los reportes: ' + error.message);
+                console.error('Error completo:', error);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        }
+    });
 }
 </script>
+
+<!-- Modal para crear reportes desde tablas/views -->
+<div class="modal fade" id="tablesViewsModal" tabindex="-1" aria-labelledby="tablesViewsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitle">Crear Reportes desde Tablas</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="modalConnectionId" value="">
+        <input type="hidden" id="modalType" value="">
+        
+        <div class="mb-3">
+          <label class="form-label">Categoría <span class="text-danger">*</span></label>
+          <select class="form-select" id="modalCategoryId" required>
+            <option value="">-- Seleccionar Categoría --</option>
+            <?php foreach ($categories as $cat): ?>
+            <option value="<?php echo $cat['CategoryId']; ?>">
+              <?php echo htmlspecialchars($cat['Title']); ?>
+            </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        
+        <div class="mb-3">
+          <label class="form-label">Seleccionar <?php echo 'Tablas/Views'; ?>:</label>
+          <div id="tablesViewsList">
+            <!-- Se cargará dinámicamente -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="createReportsBtn">Crear Reportes</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <?php require_once('footer.php'); ?>
