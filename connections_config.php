@@ -160,11 +160,15 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
         }
     }
     
+    // Medir tiempo de respuesta (ping)
+    $ping_start = microtime(true);
+    
     // Intentar conectar usando class_Connections
     $conn = class_Connections($test_id);
     
     // Verificar la conexión haciendo una prueba real
     $success = false;
+    $ping_time = 0;
     if ($conn !== null && $conn !== false) {
         // Hacer una prueba real según el tipo de conexión
         if (is_object($conn)) {
@@ -175,6 +179,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
                 $success = ($test_result !== false);
                 if (!$success && $test_error) {
                     $error_message = "ClickHouse: " . $test_error;
+                } else {
+                    // Calcular ping después de la consulta exitosa
+                    $ping_time = (microtime(true) - $ping_start) * 1000; // Convertir a milisegundos
                 }
             } elseif ($conn instanceof mysqli) {
                 // Para MySQL, probar con una consulta simple
@@ -182,6 +189,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
                 $success = ($test_result !== false);
                 if (!$success) {
                     $error_message = "MySQL: " . $conn->error;
+                } else {
+                    // Calcular ping después de la consulta exitosa
+                    $ping_time = (microtime(true) - $ping_start) * 1000; // Convertir a milisegundos
                 }
             } elseif ($conn instanceof PDO) {
                 // Para PDO (SQL Server, etc.), probar con una consulta simple
@@ -191,6 +201,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
                     if (!$success) {
                         $error_info = $conn->errorInfo();
                         $error_message = "SQL Server: " . ($error_info[2] ?? 'Error desconocido');
+                    } else {
+                        // Calcular ping después de la consulta exitosa
+                        $ping_time = (microtime(true) - $ping_start) * 1000; // Convertir a milisegundos
                     }
                 } catch (PDOException $e) {
                     $success = false;
@@ -199,11 +212,18 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
             } else {
                 // Otro tipo de conexión, asumir que funciona si no es null
                 $success = true;
+                $ping_time = (microtime(true) - $ping_start) * 1000;
             }
         } else {
             // Si es un recurso u otro tipo, asumir que funciona
             $success = true;
+            $ping_time = (microtime(true) - $ping_start) * 1000;
         }
+    }
+    
+    // Si la conexión falló pero se intentó con conexión directa, también medir ping
+    if (!$success && isset($test_conn)) {
+        $ping_time = (microtime(true) - $ping_start) * 1000;
     }
     
     // Si class_Connections falló pero tenemos info de la conexión, intentar conexión directa
@@ -232,6 +252,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
                 if ($test_result !== false) {
                     $success = true;
                     $error_message = ''; // Limpiar el error si la conexión funciona
+                    $ping_time = (microtime(true) - $ping_start) * 1000; // Calcular ping
                 } else {
                     $error_message = "MySQL: " . $test_conn->error;
                 }
@@ -251,6 +272,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
                         if ($test_result !== false) {
                             $success = true;
                             $error_message = '';
+                            $ping_time = (microtime(true) - $ping_start) * 1000; // Calcular ping
                         }
                     } catch (PDOException $e) {
                         $error_message = "SQL Server: " . $e->getMessage();
@@ -262,6 +284,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
                 $error_message = "SQL Server: Base de datos no especificada";
             }
         }
+    }
+    
+    // Calcular ping final si aún no se calculó y la conexión fue exitosa
+    if ($success && $ping_time == 0) {
+        $ping_time = (microtime(true) - $ping_start) * 1000;
     }
     
     // Si aún falló, obtener el mensaje de error más detallado
@@ -293,7 +320,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'success' => $success, 
-        'message' => $success ? 'Conexión exitosa' : $error_message
+        'message' => $success ? 'Conexión exitosa' : $error_message,
+        'ping' => $success ? round($ping_time, 2) : null // Ping en milisegundos
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     
     // Terminar buffer y salir
@@ -560,6 +588,7 @@ if ($result) {
                 <th>Views</th>
                 <th>SPs</th>
                 <th>Conexión</th>
+                <th>Ping</th>
                 <th>Estado</th>
                 <th>Acciones</th>
               </tr>
@@ -567,7 +596,7 @@ if ($result) {
             <tbody>
               <?php if (empty($connections)): ?>
               <tr>
-                <td colspan="13" class="text-center text-muted">
+                <td colspan="14" class="text-center text-muted">
                   No hay conexiones registradas
                 </td>
               </tr>
@@ -613,6 +642,11 @@ if ($result) {
                       <div style="position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid #1f2937;"></div>
                     </div>
                   </div>
+                </td>
+                <td>
+                  <span class="connection-ping-display" data-connection-id="<?php echo $conn['ConnectionId']; ?>" style="font-size: 11px; color: #6c757d;">
+                    <span class="spinner-border spinner-border-sm text-secondary" style="width: 10px; height: 10px;" role="status"></span>
+                  </span>
                 </td>
                 <td>
                   <span class="badge bg-<?php echo ($conn['Status'] == 1) ? 'success' : 'secondary'; ?>">
@@ -744,6 +778,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     // Bolita verde
                     statusEl.innerHTML = '<span class="badge bg-success" style="width: 12px; height: 12px; border-radius: 50%; display: inline-block; padding: 0; cursor: pointer;" title="Conexión exitosa"></span>';
+                    
+                    // Mostrar ping si está disponible
+                    if (data.ping !== null && data.ping !== undefined) {
+                        const pingDisplay = document.querySelector('.connection-ping-display[data-connection-id="' + connectionId + '"]');
+                        if (pingDisplay) {
+                            const pingMs = parseFloat(data.ping);
+                            let pingColor = '#28a745'; // Verde por defecto
+                            let pingText = pingMs.toFixed(0) + 'ms';
+                            
+                            if (pingMs > 500) {
+                                pingColor = '#dc3545'; // Rojo si es muy lento
+                            } else if (pingMs > 200) {
+                                pingColor = '#ffc107'; // Amarillo si es lento
+                            }
+                            
+                            pingDisplay.innerHTML = '<span style="color: ' + pingColor + '; font-weight: 500;">' + pingText + '</span>';
+                            pingDisplay.title = 'Tiempo de respuesta: ' + pingMs.toFixed(2) + 'ms';
+                        }
+                    }
                 } else {
                     // Bolita roja con tooltip
                     const errorMsg = data.message || 'Error desconocido';
@@ -808,6 +861,13 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => {
                 // Error en la petición - bolita roja
                 statusEl.innerHTML = '<span class="badge bg-danger connection-error-dot" style="width: 12px; height: 12px; border-radius: 50%; display: inline-block; padding: 0; cursor: pointer;" title="Error al probar conexión"></span>';
+                
+                // Mostrar "-" en ping si hay error
+                const pingDisplayError = document.querySelector('.connection-ping-display[data-connection-id="' + connectionId + '"]');
+                if (pingDisplayError) {
+                    pingDisplayError.innerHTML = '<span style="color: #dc3545;">-</span>';
+                    pingDisplayError.title = 'Error al medir ping';
+                }
                 
                 if (tooltip && errorText) {
                     const errorMsg = 'Error al probar conexión: ' + error.message;
