@@ -27,9 +27,11 @@ function class_connSqlServer($hostname, $port, $username, $password, $database) 
         PDO::ATTR_EMULATE_PREPARES => false
     ];
     
-    // Intentar conectar usando PDO con sqlsrv primero
+    // Intentar conectar usando PDO con pdo_sqlsrv primero (extensión nativa de Microsoft)
+    // Esta es la extensión más eficiente y recomendada para SQL Server
     try {
-        // Construir DSN para SQL Server con sqlsrv
+        // Construir DSN para SQL Server con pdo_sqlsrv
+        // pdo_sqlsrv usa el formato: sqlsrv:Server=...;Database=...
         $dsn = "sqlsrv:Server={$server_string};Database={$database};Encrypt=false;TrustServerCertificate=true";
         
         $conn = new PDO($dsn, $username, $password, $options);
@@ -37,9 +39,13 @@ function class_connSqlServer($hostname, $port, $username, $password, $database) 
         // Marcar el tipo de conexión
         $conn->type = 'sqlserver';
         
+        if (isset($GLOBALS['debug_info'])) {
+            $GLOBALS['debug_info'][] = "✓ SQL Server: Conexión exitosa usando pdo_sqlsrv";
+        }
+        
         return $conn;
     } catch (PDOException $e) {
-        // Si falla con sqlsrv, intentar con ODBC (más común en Windows)
+        // Si falla con pdo_sqlsrv, intentar con ODBC (más común en Windows sin pdo_sqlsrv)
         try {
             // ODBC Driver 17 for SQL Server es el más común
             // Si el hostname tiene instancia nombrada, usarlo directamente
@@ -48,6 +54,11 @@ function class_connSqlServer($hostname, $port, $username, $password, $database) 
             $dsn = "odbc:Driver={ODBC Driver 17 for SQL Server};Server={$odbc_server};Database={$database};TrustServerCertificate=yes";
             $conn = new PDO($dsn, $username, $password, $options);
             $conn->type = 'sqlserver';
+            
+            if (isset($GLOBALS['debug_info'])) {
+                $GLOBALS['debug_info'][] = "✓ SQL Server: Conexión exitosa usando ODBC Driver 17";
+            }
+            
             return $conn;
         } catch (PDOException $e2) {
             // Intentar con otros drivers ODBC comunes
@@ -64,6 +75,11 @@ function class_connSqlServer($hostname, $port, $username, $password, $database) 
                     $dsn = "odbc:Driver={{$driver}};Server={$odbc_server};Database={$database};TrustServerCertificate=yes";
                     $conn = new PDO($dsn, $username, $password, $options);
                     $conn->type = 'sqlserver';
+                    
+                    if (isset($GLOBALS['debug_info'])) {
+                        $GLOBALS['debug_info'][] = "✓ SQL Server: Conexión exitosa usando {$driver}";
+                    }
+                    
                     return $conn;
                 } catch (PDOException $e3) {
                     // Continuar con el siguiente driver
@@ -78,11 +94,16 @@ function class_connSqlServer($hostname, $port, $username, $password, $database) 
                 $dsn = "dblib:host={$dblib_host}:{$dblib_port};dbname={$database}";
                 $conn = new PDO($dsn, $username, $password, $options);
                 $conn->type = 'sqlserver';
+                
+                if (isset($GLOBALS['debug_info'])) {
+                    $GLOBALS['debug_info'][] = "✓ SQL Server: Conexión exitosa usando dblib";
+                }
+                
                 return $conn;
             } catch (PDOException $e4) {
                 if (isset($GLOBALS['debug_info'])) {
                     $error_msg = "✗ SQL Server: Error de conexión - ";
-                    $error_msg .= "sqlsrv: " . $e->getMessage() . "; ";
+                    $error_msg .= "pdo_sqlsrv: " . $e->getMessage() . "; ";
                     $error_msg .= "ODBC: " . $e2->getMessage();
                     $GLOBALS['debug_info'][] = $error_msg;
                 }
