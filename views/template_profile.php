@@ -33,11 +33,17 @@ if (isset($array_users_info['data'][0])) {
   $row_users_info = null;
 }
 
+// Obtener la imagen del avatar
+$avatar_image = 'assets/images/avatar.webp'; // Imagen por defecto
+if (isset($row_users_info['AvatarImage']) && !empty($row_users_info['AvatarImage']) && file_exists($row_users_info['AvatarImage'])) {
+  $avatar_image = $row_users_info['AvatarImage'];
+}
+
 ?>
 
 <li class="nav-item dropdown"><a class="nav-link lh-1 pe-0" id="navbarDropdownUser" href="modules/echarts/line-charts.html#!" role="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-haspopup="true" aria-expanded="false">
                 <div class="avatar avatar-l ">
-                  <img class="rounded-circle " src="assets/images/avatar.webp" alt="">
+                  <img class="rounded-circle " src="<?php echo htmlspecialchars($avatar_image); ?>" alt="" style="object-fit: cover;">
                 </div>
               </a>
               <div class="dropdown-menu dropdown-menu-end navbar-dropdown-caret py-0 dropdown-profile shadow border" aria-labelledby="navbarDropdownUser">
@@ -45,7 +51,7 @@ if (isset($array_users_info['data'][0])) {
                   <div class="card-body p-0">
                     <div class="text-center pt-4 pb-3">
                       <div class="avatar avatar-xl ">
-                        <img class="rounded-circle " src="assets/images/avatar.webp" alt="">
+                        <img class="rounded-circle " src="<?php echo htmlspecialchars($avatar_image); ?>" alt="" style="object-fit: cover;">
                       </div>
                       <h6 class="mt-2 text-body-emphasis"><?php echo isset($row_users_info['FullName']) ? $row_users_info['FullName'] : 'Usuario'; ?></h6>
                     </div>
@@ -88,6 +94,16 @@ if (isset($array_users_info['data'][0])) {
                         Cambiar contraseña</a>
                       </li>
                       <li class="nav-item">
+                        <a class="nav-link px-3" href="users_config.php?action=edit&id=<?php echo $UsersId; ?>">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-user me-2 text-body"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        Editar perfil</a>
+                      </li>
+                      <?php 
+                      // Solo mostrar configuración de CRUDs si el usuario es administrador (UsersType == 1)
+                      $is_admin = isset($row_users_info['UsersType']) && $row_users_info['UsersType'] == 1;
+                      if ($is_admin): 
+                      ?>
+                      <li class="nav-item">
                         <a class="nav-link px-3" href="menu_config.php?type=sections">
                           <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-settings me-2 text-body"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                           Configuración
@@ -121,6 +137,35 @@ if (isset($array_users_info['data'][0])) {
                           Conexiones
                         </a>
                       </li>
+                      <li class="nav-item">
+                        <a class="nav-link px-3" href="conventions_config.php">
+                          <span class="me-2">-</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14px" height="14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file-text me-2 text-body"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><line x1="10" y1="9" x2="8" y2="9"></line></svg>
+                          Convenciones
+                        </a>
+                      </li>
+                      <li class="nav-item">
+                        <a class="nav-link px-3" href="masking_config.php">
+                          <span class="me-2">-</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14px" height="14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-shield me-2 text-body"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                          Enmascaramiento
+                        </a>
+                      </li>
+                      <li class="nav-item">
+                        <a class="nav-link px-3" href="users_config.php">
+                          <span class="me-2">-</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14px" height="14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-users me-2 text-body"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                          Usuarios
+                        </a>
+                      </li>
+                      <li class="nav-item">
+                        <a class="nav-link px-3" href="access_config.php">
+                          <span class="me-2">-</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14px" height="14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-key me-2 text-body"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+                          Accesos
+                        </a>
+                      </li>
+                      <?php endif; ?>
                     </ul>
                     <hr>
                   

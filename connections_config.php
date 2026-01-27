@@ -572,9 +572,9 @@ if ($result) {
           </div>
         </form>
         <?php else: ?>
-        <!-- Lista -->
+        <!-- Lista con buscador y paginación -->
         <div class="table-responsive">
-          <table class="table table-hover">
+          <table class="table table-hover" id="connectionsTable">
             <thead>
               <tr>
                 <th>ID</th>
@@ -941,6 +941,52 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
 });
+
+// Inicializar DataTables para la tabla de conexiones
+if (typeof jQuery !== 'undefined') {
+    jQuery(document).ready(function($) {
+        var connectionsTable = $('#connectionsTable').DataTable({
+            "language": {
+                "decimal": ",",
+                "emptyTable": "No hay conexiones registradas",
+                "info": "Mostrando _START_ a _END_ de _TOTAL_ registros",
+                "infoEmpty": "Mostrando 0 a 0 de 0 registros",
+                "infoFiltered": "(filtrado de _MAX_ registros totales)",
+                "infoPostFix": "",
+                "thousands": ".",
+                "lengthMenu": "Mostrar _MENU_ registros",
+                "loadingRecords": "Cargando...",
+                "processing": "Procesando...",
+                "search": "Buscar:",
+                "zeroRecords": "No se encontraron registros coincidentes",
+                "paginate": {
+                    "first": "Primero",
+                    "last": "Último",
+                    "next": "Siguiente",
+                    "previous": "Anterior"
+                },
+                "aria": {
+                    "sortAscending": ": activar para ordenar la columna de forma ascendente",
+                    "sortDescending": ": activar para ordenar la columna de forma descendente"
+                }
+            },
+            "pageLength": 25,
+            "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
+            "order": [[1, "asc"]], // Ordenar por título por defecto
+            "responsive": false,
+            "scrollX": false,
+            "autoWidth": true,
+            "dom": '<"row mb-3"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>rtip',
+            "columnDefs": [
+                {
+                    "targets": [7, 8, 9, 10, 11, 13], // Columnas de estadísticas, conexión, ping y acciones
+                    "orderable": false,
+                    "searchable": false
+                }
+            ]
+        });
+    });
+}
 </script>
 
 <?php require_once('footer.php'); ?>

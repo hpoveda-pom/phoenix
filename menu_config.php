@@ -159,6 +159,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
+        elseif ($action_post === 'copy_item') {
+            $copy_id = intval($_POST['copy_id'] ?? 0);
+            
+            if ($copy_id > 0) {
+                // Obtener el reporte original
+                $result = $conn_phoenix->query("SELECT * FROM reports WHERE ReportsId = $copy_id");
+                if ($result && $result->num_rows > 0) {
+                    $original = $result->fetch_assoc();
+                    
+                    // Crear título con "- copia"
+                    $new_title = trim($original['Title']) . ' - copia';
+                    
+                    // Insertar el reporte clonado
+                    // Preparar valores, usando 0 para campos opcionales que pueden ser NULL
+                    $query_id_final = !empty($original['QueryId']) ? intval($original['QueryId']) : 0;
+                    $total_axis_x_final = !empty($original['TotalAxisX']) ? intval($original['TotalAxisX']) : 0;
+                    $total_axis_y_final = !empty($original['TotalAxisY']) ? intval($original['TotalAxisY']) : 0;
+                    $pipelines_id_final = !empty($original['PipelinesId']) ? intval($original['PipelinesId']) : 0;
+                    
+                    $sql = "INSERT INTO reports (Title, Description, CategoryId, `Order`, TypeId, UsersId, ConnectionId, Query, QueryId, Version, LayoutGridClass, Periodic, ConventionStatus, MaskingStatus, Status, TotalAxisX, TotalAxisY, PipelinesId, ParentId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, 0), 0)";
+                    $stmt = $conn_phoenix->prepare($sql);
+                    if ($stmt === false) {
+                        $message = 'Error al preparar la consulta: ' . $conn_phoenix->error;
+                        $message_type = 'danger';
+                    } else {
+                        $stmt->bind_param('ssiiiiisissiiiiiii', 
+                            $new_title,
+                            $original['Description'],
+                            $original['CategoryId'],
+                            $original['Order'],
+                            $original['TypeId'],
+                            $UsersId,
+                            $original['ConnectionId'],
+                            $original['Query'],
+                            $query_id_final,
+                            $original['Version'],
+                            $original['LayoutGridClass'],
+                            $original['Periodic'],
+                            $original['ConventionStatus'],
+                            $original['MaskingStatus'],
+                            $original['Status'],
+                            $total_axis_x_final,
+                            $total_axis_y_final,
+                            $pipelines_id_final
+                        );
+                        
+                        if ($stmt->execute()) {
+                            $message = 'Reporte copiado exitosamente';
+                            $message_type = 'success';
+                            $action = 'list';
+                        } else {
+                            $message = 'Error al copiar: ' . $stmt->error;
+                            $message_type = 'danger';
+                        }
+                        $stmt->close();
+                    }
+                } else {
+                    $message = 'Reporte no encontrado';
+                    $message_type = 'danger';
+                }
+            }
+        }
+        
         elseif ($action_post === 'delete') {
             $delete_id = intval($_POST['delete_id'] ?? 0);
             $delete_type = $_POST['delete_type'] ?? '';
@@ -481,9 +544,9 @@ if ($result) {
           </div>
         </form>
         <?php else: ?>
-        <!-- Lista -->
+        <!-- Lista con buscador y paginación -->
         <div class="table-responsive">
-          <table class="table table-hover">
+          <table class="table table-hover" id="menuConfigTable">
             <thead>
               <tr>
                 <th>ID</th>
@@ -543,6 +606,16 @@ if ($result) {
                 </td>
                 <?php endif; ?>
                 <td>
+                  <?php if ($type === 'items'): ?>
+                  <!-- Botón de copiar (solo para reportes) -->
+                  <form method="POST" action="menu_config.php?type=<?php echo $type; ?>" style="display: inline;" onsubmit="return confirm('¿Está seguro de copiar este reporte?');">
+                    <input type="hidden" name="action" value="copy_item">
+                    <input type="hidden" name="copy_id" value="<?php echo $item['ReportsId']; ?>">
+                    <button type="submit" class="btn btn-sm btn-outline-info" title="Copiar reporte">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-copy"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                  </form>
+                  <?php endif; ?>
                   <a href="menu_config.php?type=<?php echo $type; ?>&action=edit&id=<?php echo $item[$type === 'sections' || $type === 'groups' ? 'CategoryId' : 'ReportsId']; ?>" class="btn btn-sm btn-outline-primary">
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                   </a>
@@ -567,5 +640,57 @@ if ($result) {
     </div>
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Esperar a que jQuery esté disponible
+    if (typeof jQuery === 'undefined') {
+        console.error('jQuery no está disponible');
+        return;
+    }
+    
+    // Inicializar DataTables
+    var table = jQuery('#menuConfigTable').DataTable({
+        "language": {
+            "decimal": ",",
+            "emptyTable": "No hay registros",
+            "info": "Mostrando _START_ a _END_ de _TOTAL_ registros",
+            "infoEmpty": "Mostrando 0 a 0 de 0 registros",
+            "infoFiltered": "(filtrado de _MAX_ registros totales)",
+            "infoPostFix": "",
+            "thousands": ".",
+            "lengthMenu": "Mostrar _MENU_ registros",
+            "loadingRecords": "Cargando...",
+            "processing": "Procesando...",
+            "search": "Buscar:",
+            "zeroRecords": "No se encontraron registros coincidentes",
+            "paginate": {
+                "first": "Primero",
+                "last": "Último",
+                "next": "Siguiente",
+                "previous": "Anterior"
+            },
+            "aria": {
+                "sortAscending": ": activar para ordenar la columna de forma ascendente",
+                "sortDescending": ": activar para ordenar la columna de forma descendente"
+            }
+        },
+        "pageLength": 25,
+        "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
+        "order": [[1, "asc"]], // Ordenar por título por defecto
+        "responsive": false,
+        "scrollX": false,
+        "autoWidth": true,
+        "dom": '<"row mb-3"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>rtip',
+        "columnDefs": [
+            {
+                "targets": -1, // Última columna (acciones)
+                "orderable": false,
+                "searchable": false
+            }
+        ]
+    });
+});
+</script>
 
 <?php require_once('footer.php'); ?>
