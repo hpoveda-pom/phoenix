@@ -363,7 +363,15 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
         
         // Execute the main query
         $error_info = null;
-        $result_data = class_clickhouse_execute($conn, $query, $error_info);
+        // Agregar parámetros de memoria para evitar overflow en GROUP BY
+        $memory_settings = [
+            'max_memory_usage' => 10000000000, // 10GB máximo
+            'max_bytes_before_external_group_by' => 2000000000, // 2GB - usar disco si excede
+            'max_bytes_before_external_sort' => 2000000000, // 2GB - usar disco para ordenamiento
+            'group_by_two_level_threshold' => 100000, // Usar two-level aggregation para grupos grandes
+            'group_by_two_level_threshold_bytes' => 100000000 // 100MB threshold para two-level
+        ];
+        $result_data = class_clickhouse_execute($conn, $query, $error_info, $memory_settings);
 
         if ($result_data !== false && is_array($result_data)) {
             // ClickHouse retorna array de arrays asociativos cuando se usa formato JSON
@@ -426,6 +434,8 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
     $total_rows = 0;
     if ($array_groupby && !empty($GroupBy) && !empty($select_GroupBy)) {
         $select_GroupBy_clean = rtrim($select_GroupBy, ',');
+        // Optimización: usar una subconsulta que permite a ClickHouse usar external aggregation
+        // Esto evita cargar todos los datos en memoria antes de hacer el GROUP BY
         $query_totalrows = "SELECT count(*) AS TOTAL_ROWS FROM (SELECT " . $select_GroupBy_clean . " FROM (" . $Query . ") AS tb " . $query_where . " " . $GroupBy . ") AS grouped";
     } else {
         $query_totalrows = "SELECT count(*) AS TOTAL_ROWS FROM (" . $Query . ") AS tb " . $query_where;
@@ -435,7 +445,13 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
     
     try {
         $count_error_info = null;
-        $count_result = class_clickhouse_execute($conn, $query_totalrows, $count_error_info);
+        // Agregar parámetros de memoria para evitar overflow
+        // Usar max_memory_usage y max_bytes_before_external_group_by
+        $count_result = class_clickhouse_execute($conn, $query_totalrows, $count_error_info, [
+            'max_memory_usage' => 10000000000, // 10GB
+            'max_bytes_before_external_group_by' => 2000000000, // 2GB - usar disco si excede
+            'max_bytes_before_external_sort' => 2000000000 // 2GB - usar disco para ordenamiento
+        ]);
         
         if ($count_result !== false && is_array($count_result) && !empty($count_result)) {
             $total_rows = isset($count_result[0]['TOTAL_ROWS']) ? intval($count_result[0]['TOTAL_ROWS']) : 0;

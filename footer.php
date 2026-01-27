@@ -17,7 +17,23 @@
 
             <div class="col-12 col-sm-auto text-center">
               <p class="mb-0 text-body-tertiary text-opacity-85">
-              <img src="assets/images/logos/logo oracle linux.png" height="30px">
+              <!-- Logo ClickHouse con soporte para light/dark mode -->
+              <svg id="clickhouse-logo" height="45" viewBox="0 0 200 40" xmlns="http://www.w3.org/2000/svg" style="display: inline-block; vertical-align: middle;">
+                <!-- Barras verticales y punto -->
+                <g id="clickhouse-graphic">
+                  <!-- Barra roja corta -->
+                  <rect x="0" y="15" width="3" height="8" fill="#FF0000"/>
+                  <!-- Cuatro barras amarillas -->
+                  <rect x="6" y="8" width="3" height="15" fill="#FFD700"/>
+                  <rect x="12" y="8" width="3" height="15" fill="#FFD700"/>
+                  <rect x="18" y="8" width="3" height="15" fill="#FFD700"/>
+                  <rect x="24" y="8" width="3" height="15" fill="#FFD700"/>
+                  <!-- Punto amarillo -->
+                  <circle cx="30" cy="10" r="2" fill="#FFD700"/>
+                </g>
+                <!-- Texto ClickHouse -->
+                <text id="clickhouse-text" x="38" y="22" font-family="Arial, sans-serif" font-size="20" font-weight="600" fill="currentColor">ClickHouse</text>
+              </svg>
               </p>
             </div>
 
@@ -160,6 +176,49 @@
       .then(registration => console.log('Service Worker registrado con éxito:', registration))
       .catch(error => console.error('Error al registrar el Service Worker:', error));
   }
+
+  // Función para actualizar el logo de ClickHouse según el tema
+  function updateClickHouseLogo() {
+    const logo = document.getElementById('clickhouse-logo');
+    const text = document.getElementById('clickhouse-text');
+    if (!logo || !text) return;
+
+    // Obtener el tema actual del documento
+    const theme = document.documentElement.getAttribute('data-bs-theme') || 'light';
+    
+    // Cambiar el color del texto según el tema
+    // En modo claro: texto oscuro, en modo oscuro: texto claro
+    if (theme === 'dark') {
+      text.setAttribute('fill', '#ffffff');
+    } else {
+      text.setAttribute('fill', '#333333');
+    }
+  }
+
+  // Actualizar el logo al cargar la página
+  document.addEventListener('DOMContentLoaded', updateClickHouseLogo);
+
+  // Observar cambios en el atributo data-bs-theme
+  const observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'data-bs-theme') {
+        updateClickHouseLogo();
+      }
+    });
+  });
+
+  // Observar cambios en el documento
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-bs-theme']
+  });
+
+  // También escuchar el evento de cambio de tema de Phoenix
+  document.body.addEventListener('clickControl', function(event) {
+    if (event.detail && event.detail.control === 'phoenixTheme') {
+      setTimeout(updateClickHouseLogo, 100);
+    }
+  });
 </script>
 
 

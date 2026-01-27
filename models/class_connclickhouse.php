@@ -36,10 +36,17 @@ function class_connClickHouse($hostname, $port, $username, $password, $database,
     return $conn;
 }
 
-function class_clickhouse_query($conn, $query, $format = 'JSON', &$error_info = null) {
+function class_clickhouse_query($conn, $query, $format = 'JSON', &$error_info = null, $settings = []) {
     // ClickHouse HTTP API: POST con query en el body
     // Para ClickHouse Cloud, usar el endpoint correcto
     $url = $conn->base_url . "/?database=" . urlencode($conn->database) . "&default_format=" . $format;
+    
+    // Agregar parámetros de configuración de ClickHouse si se proporcionan
+    if (!empty($settings) && is_array($settings)) {
+        foreach ($settings as $key => $value) {
+            $url .= "&" . urlencode($key) . "=" . urlencode($value);
+        }
+    }
     
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -122,9 +129,9 @@ function class_clickhouse_query($conn, $query, $format = 'JSON', &$error_info = 
     return $response;
 }
 
-function class_clickhouse_execute($conn, $query, &$error_info = null) {
+function class_clickhouse_execute($conn, $query, &$error_info = null, $settings = []) {
     // Ejecutar una consulta y retornar los resultados como array asociativo
-    $result = class_clickhouse_query($conn, $query, 'JSON', $error_info);
+    $result = class_clickhouse_query($conn, $query, 'JSON', $error_info, $settings);
     
     if ($result === false) {
         return false;
