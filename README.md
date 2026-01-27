@@ -19,21 +19,40 @@
 
 Phoenix es un sistema de gestión de reportes y análisis de datos que permite crear, gestionar y visualizar reportes desde múltiples fuentes de datos. El sistema soporta conexiones a diferentes tipos de bases de datos incluyendo MySQL, SQL Server, ClickHouse y Oracle.
 
+Phoenix está diseñado para funcionar en cualquier infraestructura, desde servidores locales hasta entornos cloud, y ha sido probado exitosamente en diferentes distribuciones Linux incluyendo Debian minimal.
+
 ---
 
 ## Requisitos del Sistema
 
 ### Sistema Operativo
-- Linux 9 (Oracle Linux o CentOS)
-- Arquitectura: ARM64 (AArch64) o Intel X86_64
-- Recomendado: Oracle Cloud Infrastructure (OCI)
+- Linux (cualquier distribución moderna)
+- Probado y funcionando en:
+  - Debian (incluyendo Debian minimal)
+  - Oracle Linux / CentOS / RHEL
+  - Ubuntu
+  - Otras distribuciones basadas en Debian o RedHat
+
+### Arquitectura
+- x86 (32 bits)
+- x64 (64 bits)
+- ARM64 (AArch64)
+
+Phoenix funciona correctamente en todas estas arquitecturas.
 
 ### Software Requerido
-- Apache 2.4 (httpd)
-- MySQL Server
-- PHP 8.2 con soporte para OCI8
+- Apache 2.4 (httpd) o Nginx
+- MySQL Server o MariaDB
+- PHP 8.3 (también compatible con PHP 8.2)
 - Git
-- Oracle Instant Client (para conexiones Oracle)
+- Oracle Instant Client (solo para conexiones Oracle, opcional)
+
+### Bases de Datos Soportadas
+Phoenix soporta conexiones a múltiples tipos de bases de datos:
+- **MySQL / MariaDB** - Soporte completo
+- **SQL Server** - Soporte completo
+- **ClickHouse** - Soporte completo
+- **Oracle** - Requiere Oracle Instant Client
 
 ### Conocimientos Previos
 - Uso básico de terminal en Linux
@@ -42,7 +61,9 @@ Phoenix es un sistema de gestión de reportes y análisis de datos que permite c
 
 ### Configuración Previa del Sistema
 
-Antes de comenzar la instalación, configura SELinux en modo permisivo:
+**Nota:** La configuración de SELinux solo aplica para sistemas basados en RedHat (CentOS, Oracle Linux, RHEL). En sistemas basados en Debian no es necesario.
+
+Para sistemas RedHat, antes de comenzar la instalación, configura SELinux en modo permisivo:
 
 ```bash
 sudo setenforce 0
@@ -59,13 +80,15 @@ sudo touch /.autorelabel && sudo reboot
 
 ## Instalación del Servidor
 
-### Paso 1: Actualizar el Sistema
+### Para Sistemas basados en RedHat (CentOS, Oracle Linux, RHEL)
+
+#### Paso 1: Actualizar el Sistema
 
 ```bash
 sudo dnf update -y
 ```
 
-### Paso 2: Instalar Apache
+#### Paso 2: Instalar Apache
 
 ```bash
 sudo dnf install httpd -y
@@ -73,7 +96,7 @@ sudo systemctl start httpd
 sudo systemctl enable httpd
 ```
 
-### Paso 3: Instalar MySQL
+#### Paso 3: Instalar MySQL
 
 ```bash
 sudo dnf install mysql-server -y
@@ -82,30 +105,72 @@ sudo systemctl enable mysqld
 sudo mysql_secure_installation
 ```
 
-### Paso 4: Instalar PHP con Soporte OCI8
-
-1. Instalar PHP y módulos necesarios:
+#### Paso 4: Instalar PHP
 
 ```bash
 sudo dnf install php php-mysqlnd php-pear php-devel php-cli php-common php-fpm -y
 ```
 
-2. Instalar Oracle Instant Client:
+#### Paso 5: Instalar Git
 
-   - Descargar el Basic Package en formato RPM desde [Oracle Instant Client Downloads](https://www.oracle.com/database/technologies/instant-client/downloads.html)
-   - Instalar el paquete RPM descargado
+```bash
+sudo dnf install git -y
+```
 
+### Para Sistemas basados en Debian (Debian, Ubuntu)
+
+#### Paso 1: Actualizar el Sistema
+
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+#### Paso 2: Instalar Apache
+
+```bash
+sudo apt install apache2 -y
+sudo systemctl start apache2
+sudo systemctl enable apache2
+```
+
+#### Paso 3: Instalar MySQL
+
+```bash
+sudo apt install mysql-server -y
+sudo systemctl start mysql
+sudo systemctl enable mysql
+sudo mysql_secure_installation
+```
+
+#### Paso 4: Instalar PHP
+
+```bash
+sudo apt install php php-mysql php-pear php-dev php-cli php-common php-fpm -y
+```
+
+#### Paso 5: Instalar Git
+
+```bash
+sudo apt install git -y
+```
+
+### Instalación de Oracle Instant Client (Opcional)
+
+Solo es necesario si planeas usar conexiones a Oracle. Para sistemas RedHat:
+
+1. Descargar el Basic Package en formato RPM desde [Oracle Instant Client Downloads](https://www.oracle.com/database/technologies/instant-client/downloads.html)
+2. Instalar el paquete RPM descargado
 3. Instalar OCI8:
 
 ```bash
 sudo pecl install oci8
 ```
 
-   Durante la instalación, proporciona la ruta del Oracle Instant Client (normalmente `/usr/lib/oracle/<version>/client64/lib`)
+Durante la instalación, proporciona la ruta del Oracle Instant Client (normalmente `/usr/lib/oracle/<version>/client64/lib`)
 
 4. Configurar PHP:
 
-   Editar `/etc/php.ini` y agregar:
+Editar `/etc/php.ini` (o `/etc/php/8.3/apache2/php.ini` en Debian) y agregar:
 
 ```ini
 extension=oci8.so
@@ -114,10 +179,16 @@ extension=oci8.so
 5. Reiniciar Apache:
 
 ```bash
+# RedHat
 sudo systemctl restart httpd
+
+# Debian
+sudo systemctl restart apache2
 ```
 
-### Paso 5: Configurar Firewall
+### Configurar Firewall
+
+**Para sistemas RedHat:**
 
 ```bash
 sudo firewall-cmd --permanent --add-service=http
@@ -126,33 +197,38 @@ sudo firewall-cmd --permanent --add-service=mysql
 sudo firewall-cmd --reload
 ```
 
-### Paso 6: Verificar Instalación
+**Para sistemas Debian:**
+
+```bash
+sudo ufw allow 'Apache Full'
+sudo ufw allow mysql
+```
+
+### Verificar Instalación
 
 Crear un archivo de prueba:
 
 ```bash
+# RedHat
+echo "<?php phpinfo(); ?>" | sudo tee /var/www/html/phpinfo.php
+
+# Debian
 echo "<?php phpinfo(); ?>" | sudo tee /var/www/html/phpinfo.php
 ```
 
-Acceder a `http://<tu_ip>/phpinfo.php` y verificar que OCI8 aparezca en los módulos cargados.
+Acceder a `http://<tu_ip>/phpinfo.php` y verificar que PHP esté funcionando correctamente.
 
 ---
 
 ## Instalación del Código Fuente
 
-1. Instalar Git:
-
-```bash
-sudo dnf install git -y
-```
-
-2. Navegar al directorio de trabajo:
+1. Navegar al directorio de trabajo:
 
 ```bash
 cd /var/www
 ```
 
-3. Clonar el repositorio:
+2. Clonar el repositorio:
 
 ```bash
 git clone https://[usuario_bitbucket]@bitbucket.org/project/phoenix.git
@@ -169,6 +245,8 @@ El código fuente se instalará en `/var/www/phoenix`.
 Asegúrate de que el dominio apunte a la IP pública del servidor mediante un registro A en tu proveedor de DNS.
 
 ### Paso 2: Crear Configuración de VirtualHost
+
+**Para sistemas RedHat:**
 
 Crear o editar `/etc/httpd/conf.d/vhosts.conf`:
 
@@ -188,10 +266,41 @@ Crear o editar `/etc/httpd/conf.d/vhosts.conf`:
 </VirtualHost>
 ```
 
+**Para sistemas Debian:**
+
+Crear o editar `/etc/apache2/sites-available/phoenix.conf`:
+
+```apache
+<VirtualHost *:80>
+    ServerAdmin webmaster@local
+    ServerName DOMINIO.COM
+    DocumentRoot /var/www/phoenix
+
+    ErrorLog ${APACHE_LOG_DIR}/phoenix-error.log
+    CustomLog ${APACHE_LOG_DIR}/phoenix-access.log combined
+
+    <Directory /var/www/phoenix>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+    </Directory>
+</VirtualHost>
+```
+
+Habilitar el sitio:
+
+```bash
+sudo a2ensite phoenix.conf
+sudo a2enmod rewrite
+```
+
 ### Paso 3: Reiniciar Apache
 
 ```bash
+# RedHat
 sudo systemctl restart httpd
+
+# Debian
+sudo systemctl restart apache2
 ```
 
 ---
@@ -252,7 +361,12 @@ cp /var/www/phoenix/config_example.php /var/www/phoenix/config.php
 3. Asegurar permisos adecuados:
 
 ```bash
+# RedHat
 sudo chown -R apache:apache /var/www/phoenix
+sudo chmod -R 755 /var/www/phoenix
+
+# Debian
+sudo chown -R www-data:www-data /var/www/phoenix
 sudo chmod -R 755 /var/www/phoenix
 ```
 
@@ -283,15 +397,17 @@ phoenix/
 
 ### Gestión de Reportes
 - Creación y edición de reportes con consultas SQL personalizadas
-- Soporte para múltiples tipos de bases de datos
+- Soporte para múltiples tipos de bases de datos (MySQL, SQL Server, ClickHouse, Oracle)
 - Filtrado, agrupación y agregación de datos
 - Exportación a Excel
 
 ### Gestión de Conexiones
 - Configuración de múltiples conexiones a bases de datos
-- Soporte para MySQL, SQL Server, ClickHouse y Oracle
+- Soporte completo para MySQL, SQL Server y ClickHouse
+- Soporte para Oracle (requiere Oracle Instant Client)
 - Prueba de conectividad en tiempo real
 - Estadísticas de tablas, vistas y procedimientos almacenados
+- Creación automática de reportes desde tablas y vistas
 
 ### Gestión de Usuarios
 - Sistema de autenticación y autorización
