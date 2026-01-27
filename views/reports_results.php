@@ -181,7 +181,8 @@ if ($action == "update" && $form_id == 'editor_query') {
           </div>
         </div>
         <?php } ?>
-        <!-- DEBUG Accordion -->
+        <!-- DEBUG Accordion - Solo se muestra si el modo debug está activado -->
+        <?php if (isset($_SESSION['debug_mode']) && $_SESSION['debug_mode']): ?>
         <div class="accordion-item">
           <h2 class="accordion-header" id="headingDebug">
             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDebug" aria-expanded="false" aria-controls="collapseDebug">
@@ -281,6 +282,7 @@ if ($action == "update" && $form_id == 'editor_query') {
             </div>
           </div>
         </div>
+        <?php endif; ?>
       </div>
     <?php } ?>
     </div>

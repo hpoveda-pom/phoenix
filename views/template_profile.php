@@ -124,7 +124,52 @@ if (isset($array_users_info['data'][0])) {
                     </ul>
                     <hr>
                   
-                    <div class="px-3"> <a class="btn btn-phoenix-secondary d-flex flex-center w-100" href="logout.php"> <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-log-out me-2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>Desconectar</a></div>
+                    <!-- Switch para activar/desactivar Debug -->
+                    <div class="px-3 py-2">
+                      <div class="form-check form-switch d-flex align-items-center justify-content-between">
+                        <label class="form-check-label d-flex align-items-center" for="debugModeSwitch">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-code me-2 text-body"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                          <span>Modo Debug</span>
+                        </label>
+                        <input class="form-check-input" type="checkbox" id="debugModeSwitch" <?php echo (isset($_SESSION['debug_mode']) && $_SESSION['debug_mode']) ? 'checked' : ''; ?>>
+                      </div>
+                    </div>
+                    <hr class="my-0">
+                    
+                    <script>
+                    // Manejar el cambio del switch de debug
+                    document.getElementById('debugModeSwitch').addEventListener('change', function() {
+                      const isEnabled = this.checked;
+                      
+                      // Enviar petición AJAX para actualizar la sesión
+                      fetch('controllers/toggle_debug.php', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: 'debug_mode=' + (isEnabled ? '1' : '0')
+                      })
+                      .then(response => response.json())
+                      .then(data => {
+                        if (data.success) {
+                          // Recargar la página para aplicar los cambios
+                          window.location.reload();
+                        } else {
+                          // Si hay error, revertir el switch
+                          this.checked = !isEnabled;
+                          alert('Error al actualizar el modo debug');
+                        }
+                      })
+                      .catch(error => {
+                        console.error('Error:', error);
+                        // Revertir el switch en caso de error
+                        this.checked = !isEnabled;
+                        alert('Error al actualizar el modo debug');
+                      });
+                    });
+                    </script>
+                  
+                    <div class="px-3 pt-2"> <a class="btn btn-phoenix-secondary d-flex flex-center w-100" href="logout.php"> <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-log-out me-2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>Desconectar</a></div>
                   <!--
                     <div class="my-2 text-center fw-bold fs-10 text-body-quaternary"><a class="text-body-quaternary me-1" href="modules/echarts/line-charts.html#!">Privacy policy</a>•<a class="text-body-quaternary mx-1" href="modules/echarts/line-charts.html#!">Terms</a>•<a class="text-body-quaternary ms-1" href="modules/echarts/line-charts.html#!">Cookies</a></div>
                   -->
