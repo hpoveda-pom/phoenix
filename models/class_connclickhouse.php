@@ -49,16 +49,23 @@ function class_clickhouse_query($conn, $query, $format = 'JSON', &$error_info = 
     // Autenticación Basic Auth
     curl_setopt($ch, CURLOPT_USERPWD, $conn->username . ":" . $conn->password);
     
-    // Headers adicionales para ClickHouse Cloud
+    // Headers adicionales para ClickHouse
     $headers = [
         'Content-Type: text/plain; charset=utf-8',
         'Accept: application/json'
     ];
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
     
-    // Configuración SSL para ClickHouse Cloud
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+    // Configuración SSL según el parámetro $secure
+    if ($conn->secure) {
+        // Con SSL: verificar certificado
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+    } else {
+        // Sin SSL: deshabilitar verificación
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+    }
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
     
@@ -123,12 +130,34 @@ function class_clickhouse_execute($conn, $query, &$error_info = null) {
         return false;
     }
     
-    // ClickHouse JSON format retorna: {"data": [...], "rows": N, "meta": [...]}
-    if (isset($result['data'])) {
+    // ClickHouse JSON format puede retornar diferentes estructuras:
+    // 1. {"data": [...], "rows": N, "meta": [...]} - Formato estándar
+    // 2. Array directo de objetos - Formato alternativo
+    // 3. Objeto simple con datos
+    
+    if (isset($result['data']) && is_array($result['data'])) {
+        // Formato estándar: extraer el array de data
         return $result['data'];
+    } elseif (is_array($result) && !empty($result)) {
+        // Si es un array directo, verificar si es array de objetos o array indexado
+        $first_item = reset($result);
+        if (is_array($first_item) && isset($first_item[0])) {
+            // Es un array indexado, convertir a asociativo si es posible
+            // ClickHouse a veces retorna arrays indexados
+            $converted = [];
+            foreach ($result as $row) {
+                if (is_array($row)) {
+                    $converted[] = $row;
+                }
+            }
+            return !empty($converted) ? $converted : $result;
+        } else {
+            // Es un array de objetos asociativos, retornar tal cual
+            return $result;
+        }
     }
     
-    // Si no tiene estructura esperada, retornar el resultado tal cual
-    return $result;
+    // Si no tiene estructura esperada, retornar array vacío
+    return [];
 }
 ?>

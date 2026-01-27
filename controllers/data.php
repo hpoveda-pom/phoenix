@@ -28,6 +28,7 @@ require_once($base_dir . '/models/class_fieldalias.php');
 
 //php ini settings
 require_once($base_dir . '/config.php');
+require_once($base_dir . '/conn/phoenix.php'); // Necesario para que class_Connections pueda leer la tabla connections
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -462,34 +463,10 @@ if ($action == "report") {
 
 // DataTables server-side processing
 if ($action == "datatables") {
-  // Limpiar el log de debug anterior y solo mantener errores
-  $previous_debug = isset($GLOBALS['debug_info']) ? $GLOBALS['debug_info'] : [];
-  $error_messages = [];
-  foreach ($previous_debug as $msg) {
-    if (stripos($msg, 'error') !== false || stripos($msg, '✗') !== false || stripos($msg, 'exception') !== false) {
-      $error_messages[] = $msg;
-    }
-  }
-  
-  // Inicializar array de debug limpio
-  $GLOBALS['debug_info'] = $error_messages;
-  $GLOBALS['debug_detailed'] = false; // Desactivar debug detallado para reducir logs
-  $debug_info = &$GLOBALS['debug_info'];
-    // Debug específico y breve para DataTables
-  if (!isset($GLOBALS['debug_filters'])) {
-    $GLOBALS['debug_filters'] = [];
-  }
-  $GLOBALS['debug_filters'][] = "=== DATATABLES AJAX ===";
-  $GLOBALS['debug_filters'][] = "filter_results enviado: " . json_encode($filter_results);
-  
-  $debug_info[] = "=== DataTables Request ===";
-  $debug_info[] = "GET params: " . json_encode($_GET);
-  
   // Capturar errores en un buffer
   $error_buffer = '';
-  set_error_handler(function($errno, $errstr, $errfile, $errline) use (&$error_buffer, &$debug_info) {
+  set_error_handler(function($errno, $errstr, $errfile, $errline) use (&$error_buffer) {
     $error_buffer .= "[$errno] $errstr en $errfile:$errline\n";
-    $debug_info[] = "PHP Error: [$errno] $errstr";
     return true;
   });
   
@@ -501,33 +478,22 @@ if ($action == "datatables") {
   header('Content-Type: application/json; charset=utf-8');
   
   try {
-    $debug_info[] = "Iniciando procesamiento DataTables";
-    
     // Inicializar variables si no existen
     if (!isset($filter_results)) {
       $filter_results = [];
-      $debug_info[] = "filter_results inicializado como array vacío";
     }
     if (!isset($groupby_results)) {
       $groupby_results = [];
-      $debug_info[] = "groupby_results inicializado como array vacío";
     }
     if (!isset($sumby_results)) {
       $sumby_results = [];
-      $debug_info[] = "sumby_results inicializado como array vacío";
     }
-    
-    // Debug: Log de groupby_results antes de enviarlo
-    $debug_info[] = "groupby_results antes de class_Recordset: " . json_encode($groupby_results);
-    $debug_info[] = "sumby_results antes de class_Recordset: " . json_encode($sumby_results);
     
     // Obtener parámetros de DataTables
     $draw = isset($_GET['draw']) ? intval($_GET['draw']) : 1;
     $start = isset($_GET['start']) ? intval($_GET['start']) : 0;
     $length = isset($_GET['length']) ? intval($_GET['length']) : 10;
     $search_value = isset($_GET['search']['value']) ? $_GET['search']['value'] : '';
-    
-    $debug_info[] = "Parámetros: draw=$draw, start=$start, length=$length";
     
     // Validar que exista la información del reporte
     if (!isset($row_reports_info)) {
@@ -540,96 +506,59 @@ if ($action == "datatables") {
       throw new Exception('Query no está definido en $row_reports_info');
     }
     
-    $debug_info[] = "Reporte ID: " . (isset($row_reports_info['ReportsId']) ? $row_reports_info['ReportsId'] : 'N/A');
-    $debug_info[] = "ConnectionId: " . $row_reports_info['ConnectionId'];
-    
-    // Debug: Antes de ejecutar class_Recordset
-    if (!isset($GLOBALS['debug_filters'])) {
-      $GLOBALS['debug_filters'] = [];
-    }
-    $GLOBALS['debug_filters'][] = "ANTES class_Recordset:";
-    $GLOBALS['debug_filters'][] = "  Query: " . $row_reports_info['Query'];
-    $GLOBALS['debug_filters'][] = "  filter_results: " . json_encode($filter_results);
-    $GLOBALS['debug_filters'][] = "  start=$start, length=$length";
-    
     // Ejecutar consulta con paginación primero para obtener los headers correctos
     // (especialmente importante cuando hay GroupBy o SumBy, ya que los headers cambian)
-    $debug_info[] = "Ejecutando consulta con paginación (start=$start, length=$length)...";
-    $debug_info[] = "groupby_results: " . json_encode($groupby_results);
-    $debug_info[] = "sumby_results: " . json_encode($sumby_results);
     $array_reports = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, $start, $length, $sumby_results);
-    
-    // Debug: Después de ejecutar class_Recordset
-    $GLOBALS['debug_filters'][] = "DESPUÉS class_Recordset:";
-    $GLOBALS['debug_filters'][] = "  total_rows: " . (isset($array_reports['info']['total_rows']) ? $array_reports['info']['total_rows'] : 'N/A');
-    $GLOBALS['debug_filters'][] = "  filas obtenidas: " . (isset($array_reports['data']) ? count($array_reports['data']) : 0);
-    
-    if (isset($array_reports['error'])) {
-      $debug_info[] = "ERROR en consulta: " . $array_reports['error'];
-    }
-    if (isset($array_reports['msg_error'])) {
-      $debug_info[] = "MSG_ERROR en consulta: " . $array_reports['msg_error'];
-    }
     
     // Obtener headers de la consulta ejecutada (que ya incluye GroupBy/SumBy si aplica)
     $array_headers = $array_reports;
     
     // Si hay datos pero no headers, obtenerlos del primer registro
     if ((!isset($array_headers['headers']) || empty($array_headers['headers'])) && isset($array_headers['data']) && is_array($array_headers['data']) && !empty($array_headers['data'])) {
-      $debug_info[] = "Headers no encontrados pero hay datos, obteniendo del primer registro...";
       $first_row = $array_headers['data'][0];
       if (is_array($first_row)) {
         $array_headers['headers'] = array_keys($first_row);
-        $debug_info[] = "Headers obtenidos del primer registro: " . implode(', ', $array_headers['headers']);
       }
     }
     
     // Si no hay headers en la respuesta, intentar obtenerlos de una consulta sin paginación
     if (!isset($array_headers['headers']) || empty($array_headers['headers'])) {
-      $debug_info[] = "Headers no encontrados en respuesta, obteniendo de consulta sin paginación...";
       $array_headers = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, 0, 1, $sumby_results);
       if (isset($array_headers['data']) && is_array($array_headers['data']) && !empty($array_headers['data'])) {
         $first_row = $array_headers['data'][0];
         if (is_array($first_row)) {
           $array_headers['headers'] = array_keys($first_row);
-          $debug_info[] = "Headers obtenidos del primer registro (sin paginación): " . implode(', ', $array_headers['headers']);
         }
       }
     }
     
     if (!isset($array_headers['headers'])) {
-      $debug_info[] = "ERROR: array_headers['headers'] no está definido";
-      $debug_info[] = "array_headers keys: " . implode(', ', array_keys($array_headers));
-      if (isset($array_headers['error'])) {
-        $debug_info[] = "Error en headers: " . $array_headers['error'];
-      }
       throw new Exception('No se pudieron obtener los headers del reporte: ' . (isset($array_headers['error']) ? $array_headers['error'] : 'Desconocido'));
     }
     
     if (!is_array($array_headers['headers']) || empty($array_headers['headers'])) {
-      $debug_info[] = "ERROR: array_headers['headers'] está vacío o no es array";
-      $debug_info[] = "Tipo de array_headers: " . gettype($array_headers);
-      $debug_info[] = "Keys de array_headers: " . (is_array($array_headers) ? implode(', ', array_keys($array_headers)) : 'No es array');
       if (isset($array_headers['data']) && is_array($array_headers['data']) && !empty($array_headers['data'])) {
-        $debug_info[] = "Hay datos disponibles, obteniendo headers del primer registro...";
         $first_row = $array_headers['data'][0];
         if (is_array($first_row)) {
-          $debug_info[] = "Headers del primer registro: " . implode(', ', array_keys($first_row));
           $array_headers['headers'] = array_keys($first_row);
         }
       }
       if (empty($array_headers['headers'])) {
-        $debug_info[] = "DEBUG COMPLETO de array_headers: " . json_encode($array_headers, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        throw new Exception('Los headers están vacíos');
+        // Construir mensaje de error más detallado
+        $error_detail = 'Los headers están vacíos';
+        if (isset($array_headers['error']) && !empty($array_headers['error'])) {
+          $error_detail .= '. Error: ' . $array_headers['error'];
+        }
+        if (isset($array_reports['error']) && !empty($array_reports['error'])) {
+          $error_detail .= '. Error en consulta: ' . $array_reports['error'];
+        }
+        throw new Exception($error_detail);
       }
     }
-    
-    $debug_info[] = "Headers obtenidos: " . count($array_headers['headers']) . " columnas: " . implode(', ', $array_headers['headers']);
     
     // Preparar datos para DataTables
     $data = [];
     if (isset($array_reports['data']) && is_array($array_reports['data']) && !empty($array_reports['data'])) {
-      $debug_info[] = "Procesando " . count($array_reports['data']) . " filas de datos";
       foreach ($array_reports['data'] as $row_index => $row) {
         $row_data = [];
         foreach ($array_headers['headers'] as $header) {
@@ -701,15 +630,6 @@ if ($action == "datatables") {
           $row_data[] = $value;
         }
         $data[] = $row_data;
-        $debug_info[] = "Fila #$row_index procesada: " . json_encode($row_data);
-      }
-    } else {
-      $debug_info[] = "WARNING: array_reports['data'] no está definido, no es array o está vacío";
-      if (isset($array_reports['data'])) {
-        $debug_info[] = "Tipo de array_reports['data']: " . gettype($array_reports['data']);
-        if (is_array($array_reports['data'])) {
-          $debug_info[] = "Tamaño de array_reports['data']: " . count($array_reports['data']);
-        }
       }
     }
     
@@ -724,55 +644,33 @@ if ($action == "datatables") {
     // Si hay error, agregarlo a la respuesta
     if (isset($array_reports['error']) && !empty($array_reports['error'])) {
       $response['error'] = $array_reports['error'];
-      $debug_info[] = "Error agregado a respuesta: " . $array_reports['error'];
     }
-    
-    $debug_info[] = "Respuesta preparada: " . count($data) . " filas, " . $response['recordsTotal'] . " total";
-    
-    // Debug: respuesta final
-    if (!isset($GLOBALS['debug_filters'])) {
-      $GLOBALS['debug_filters'] = [];
-    }
-    $GLOBALS['debug_filters'][] = "RESPUESTA DATATABLES:";
-    $GLOBALS['debug_filters'][] = "  recordsTotal: " . $response['recordsTotal'];
-    $GLOBALS['debug_filters'][] = "  recordsFiltered: " . $response['recordsFiltered'];
-    $GLOBALS['debug_filters'][] = "  data: " . count($data) . " filas";
-    
-    // Agregar debug a la respuesta para que se vea en el navegador
-    $response['debug_filters'] = $GLOBALS['debug_filters'];
     
     // Validar JSON antes de enviar
     $json_response = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($json_response === false) {
       $json_error = json_last_error_msg();
-      $debug_info[] = "ERROR al codificar JSON: " . $json_error;
       throw new Exception('Error al codificar JSON: ' . $json_error);
     }
-    
-    $debug_info[] = "JSON generado exitosamente (" . strlen($json_response) . " bytes)";
     
     echo $json_response;
     
   } catch (Exception $e) {
-    $debug_info[] = "EXCEPCIÓN: " . $e->getMessage();
     $error_response = [
       'draw' => isset($_GET['draw']) ? intval($_GET['draw']) : 1,
       'recordsTotal' => 0,
       'recordsFiltered' => 0,
       'data' => [],
-      'error' => $e->getMessage(),
-      'debug' => $debug_info
+      'error' => $e->getMessage()
     ];
     echo json_encode($error_response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
   } catch (Error $e) {
-    $debug_info[] = "ERROR FATAL: " . $e->getMessage();
     $error_response = [
       'draw' => isset($_GET['draw']) ? intval($_GET['draw']) : 1,
       'recordsTotal' => 0,
       'recordsFiltered' => 0,
       'data' => [],
-      'error' => 'Error: ' . $e->getMessage(),
-      'debug' => $debug_info
+      'error' => 'Error: ' . $e->getMessage()
     ];
     echo json_encode($error_response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
   }

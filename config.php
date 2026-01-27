@@ -14,9 +14,9 @@ $row_config['site_name'] = "Phoenix - POM";
 $row_config['site_logo'] = "logo.png";
 
 /*DB Connections*/
-$row_config['db_host'] = "localhost";
-$row_config['db_user'] = "root";
-$row_config['db_pass'] = "";
+$row_config['db_host'] = "phoenix.pomcr.local";
+$row_config['db_user'] = "hpoveda";
+$row_config['db_pass'] = "Solid256!";
 $row_config['db_name'] = "phoenix";
 
 $row_config['time_zone'] = "America/Costa_Rica";

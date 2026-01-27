@@ -110,12 +110,6 @@ if (is_array($array_filters) && !empty($array_filters)) {
   }
 }
 
-// Debug breve: solo filtros finales
-if (!isset($GLOBALS['debug_filters'])) {
-  $GLOBALS['debug_filters'] = [];
-}
-$GLOBALS['debug_filters'][] = "=== REPORTS.PHP (CARGA INICIAL) ===";
-$GLOBALS['debug_filters'][] = "filter_results: " . json_encode($filter_results);
 
 //Group by selected
 $groupby_selected = array();
@@ -346,56 +340,20 @@ foreach ($excel_data['headers'] as $key_headers => $row_headers) {
   $LogType = 'Excel';
 }
 
-// Inicializar array de debug global antes de cualquier llamada
-if (!isset($GLOBALS['debug_info'])) {
-  $GLOBALS['debug_info'] = [];
-}
-
 //reports recordset
 if (isset($row_reports_info['TypeId']) && $row_reports_info['TypeId']==1) {
-
-  // Debug breve: antes de ejecutar
-  if (!isset($GLOBALS['debug_filters'])) {
-    $GLOBALS['debug_filters'] = [];
-  }
-  $GLOBALS['debug_filters'][] = "ANTES class_Recordset:";
-  $GLOBALS['debug_filters'][] = "  Query: " . $row_reports_info['Query'];
-  $GLOBALS['debug_filters'][] = "  filter_results: " . json_encode($filter_results);
 
   // Capturar tiempo de inicio de ejecución
   $query_execution_start = microtime(true);
   
   $array_headers  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], null, null, 1, null, null, $sumby_results);
   
-  // Debug: después de headers
-  if (!isset($GLOBALS['debug_filters'])) {
-    $GLOBALS['debug_filters'] = [];
-  }
-  $GLOBALS['debug_filters'][] = "DESPUÉS headers (sin filtros): " . (isset($array_headers['info']['total_rows']) ? $array_headers['info']['total_rows'] : 'N/A') . " filas";
-  
   $array_reports  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, $Limit, null, null, $sumby_results);
-  
-  // Debug: después de reports
-  $GLOBALS['debug_filters'][] = "DESPUÉS reports (con filtros): " . (isset($array_reports['info']['total_rows']) ? $array_reports['info']['total_rows'] : 'N/A') . " filas totales, " . (isset($array_reports['data']) ? count($array_reports['data']) : 0) . " filas en página";
   
   // Calcular tiempo de ejecución
   $query_execution_end = microtime(true);
   $query_execution_time = $query_execution_end - $query_execution_start;
   $query_execution_time_formatted = number_format($query_execution_time, 3) . ' segundos';
-  
-  // Capturar información de debug de class_Connections
-  $debug_info = isset($GLOBALS['debug_info']) ? $GLOBALS['debug_info'] : [];
-  
-  // Agregar información adicional de debug
-  if (isset($array_reports['error'])) {
-    $debug_info[] = "Error en class_Recordset: " . $array_reports['error'];
-  }
-  if (isset($array_headers['error'])) {
-    $debug_info[] = "Error en class_Recordset (headers): " . $array_headers['error'];
-  }
-  
-  // Guardar de vuelta en GLOBALS
-  $GLOBALS['debug_info'] = $debug_info;
   
   // Inicializar array_info con valores por defecto si no existe
   if (isset($array_reports['info']) && is_array($array_reports['info'])) {

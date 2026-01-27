@@ -73,10 +73,20 @@ function class_Connections($Id){
                 }
                 
                 // Validar que todos los campos necesarios estén presentes
+                // TODAS las variables deben provenir de la tabla connections
                 $hostname = isset($row['Hostname']) ? trim($row['Hostname']) : '';
-                $port = isset($row['Port']) && !empty($row['Port']) ? trim($row['Port']) : '3306';
                 $username = isset($row['Username']) ? trim($row['Username']) : '';
                 $password = isset($row['Password']) ? $row['Password'] : '';
+                
+                // Determinar puerto por defecto según el conector
+                $connector = isset($row['Connector']) ? strtolower(trim($row['Connector'])) : '';
+                $default_port = '3306'; // Por defecto MySQL
+                if ($connector == 'clickhouse') {
+                    $default_port = '8123'; // HTTP por defecto para ClickHouse
+                }
+                
+                // El puerto DEBE venir de la tabla connections
+                $port = isset($row['Port']) && !empty(trim($row['Port'])) ? trim($row['Port']) : $default_port;
                 
                 // Si ConnectionId es 1 o 2 y los campos Hostname/Username están vacíos, usar datos de config.php
                 if (($Id == 1 || $Id == 2) && (empty($hostname) || empty($username))) {
@@ -127,7 +137,19 @@ function class_Connections($Id){
                                     $debug_info[] = "  ✓ Conexión establecida exitosamente";
                                 }
                             } else {
-                                $debug_info[] = "  ✗ Error al establecer conexión para ConnectionId: $Id";
+                                $error_msg = "  ✗ Error al establecer conexión para ConnectionId: $Id";
+                                $debug_info[] = $error_msg;
+                                
+                                // Capturar error en el array global
+                                if (!isset($GLOBALS['phoenix_errors_warnings'])) {
+                                    $GLOBALS['phoenix_errors_warnings'] = [];
+                                }
+                                $GLOBALS['phoenix_errors_warnings'][] = [
+                                    'type' => 'error',
+                                    'source' => 'class_Connections - MySQL Connection',
+                                    'message' => "Error al establecer conexión MySQL para ConnectionId: $Id (Host: $hostname, DB: $database, User: $username)",
+                                    'timestamp' => date('Y-m-d H:i:s')
+                                ];
                                 
                                 // Si la conexión falla y es ID 1 o 2, intentar con la base de datos de config.php
                                 if (($Id == 1 || $Id == 2) && isset($row_config['db_name']) && !empty(trim($row_config['db_name']))) {
@@ -142,6 +164,13 @@ function class_Connections($Id){
                                             }
                                         } else {
                                             $debug_info[] = "  ✗ Error también con fallback";
+                                            // Capturar error de fallback también
+                                            $GLOBALS['phoenix_errors_warnings'][] = [
+                                                'type' => 'error',
+                                                'source' => 'class_Connections - MySQL Fallback',
+                                                'message' => "Error también con fallback a base de datos: $db_name",
+                                                'timestamp' => date('Y-m-d H:i:s')
+                                            ];
                                         }
                                     }
                                 }
@@ -200,7 +229,8 @@ function class_Connections($Id){
                             $debug_info[] = "  ✗ Base de datos vacía o no determinada";
                         }
                     } elseif ($row['Connector'] == 'clickhouse') {
-                        // Para ClickHouse, usar Schema como database (o ServiceName como fallback)
+                        // Para ClickHouse, TODAS las variables deben provenir de la tabla connections
+                        // Database: usar Schema como database (o ServiceName como fallback)
                         if (!empty($schema)) {
                             $database = $schema;
                         } elseif (!empty($service_name)) {
@@ -209,18 +239,19 @@ function class_Connections($Id){
                             $database = 'default';
                         }
                         
-                        // Puerto por defecto para ClickHouse: 8443 (HTTPS) o 8123 (HTTP)
-                        if (empty($port)) {
-                            $port = '8443'; // Por defecto HTTPS para ClickHouse Cloud
-                        }
+                        // El puerto YA viene de la tabla connections (se estableció arriba con el valor correcto)
+                        // No sobrescribir el puerto aquí, usar el que viene de la tabla
                         
                         if ($debug_detailed) {
                             $debug_info[] = "  → Database determinada: '$database' (Schema: '$schema', ServiceName: '$service_name')";
                             $debug_info[] = "  → Intentando conectar a ClickHouse: $hostname:$port/$database (usuario: $username)";
+                            $debug_info[] = "  → Puerto desde tabla connections: '$port'";
                         }
                         
-                        // ClickHouse usa HTTPS por defecto (secure = true)
-                        $secure = true;
+                        // Determinar si usar SSL según el puerto de la tabla connections:
+                        // 8123 = HTTP (sin SSL), 8443/9440 = HTTPS (con SSL)
+                        // Esta lógica se basa en el puerto almacenado en la tabla
+                        $secure = ($port == '8443' || $port == '9440');
                         $conn = class_connClickHouse($hostname, $port, $username, $password, $database, $secure);
                         
                         if ($conn) {
@@ -337,7 +368,19 @@ function class_Connections($Id){
     // Si no se pudo obtener la conexión, retornar null
     // Esto permitirá que el código que llama maneje el error apropiadamente
     if (!$conn) {
-        $debug_info[] = "✗ No se pudo establecer conexión final para ConnectionId: $Id";
+        $error_msg = "✗ No se pudo establecer conexión final para ConnectionId: $Id";
+        $debug_info[] = $error_msg;
+        
+        // Capturar error en el array global
+        if (!isset($GLOBALS['phoenix_errors_warnings'])) {
+            $GLOBALS['phoenix_errors_warnings'] = [];
+        }
+        $GLOBALS['phoenix_errors_warnings'][] = [
+            'type' => 'error',
+            'source' => 'class_Connections',
+            'message' => $error_msg,
+            'timestamp' => date('Y-m-d H:i:s')
+        ];
     }
     
     return $conn;

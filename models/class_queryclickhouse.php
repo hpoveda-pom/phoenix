@@ -282,9 +282,33 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
             $GLOBALS['debug_filters'][] = "ERROR: " . $error_msg;
         }
         
+        // Intentar obtener headers de la query original aunque falle la conexión
+        // Esto ayuda a que DataTables pueda mostrar la estructura aunque no haya datos
+        $headers = [];
+        try {
+            // Intentar parsear la query para obtener los nombres de columnas
+            if (preg_match('/SELECT\s+(.+?)\s+FROM/i', $Query, $matches)) {
+                $select_part = $matches[1];
+                // Si hay GROUP BY, los headers pueden incluir campos calculados
+                if ($array_groupby && !empty($select_GroupBy)) {
+                    $select_GroupBy_clean = rtrim($select_GroupBy, ',');
+                    $headers = array_map('trim', explode(',', $select_GroupBy_clean));
+                    $headers[] = 'Cantidad';
+                    if (!empty($select_SumBy)) {
+                        // Extraer nombres de campos SumBy
+                        if (preg_match_all('/AS\s+`([^`]+)`/i', $select_SumBy, $sumby_matches)) {
+                            $headers = array_merge($headers, $sumby_matches[1]);
+                        }
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // Si falla el parseo, headers queda vacío
+        }
+        
         return [
             'info' => ['total_rows' => 0, 'page_rows' => 0, 'total_pages' => 0],
-            'headers' => [],
+            'headers' => $headers,
             'data' => [],
             'error' => $error_msg
         ];
@@ -319,12 +343,25 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
                 $first_row = $result_data[0];
                 if (is_array($first_row)) {
                     $headers = array_keys($first_row);
+                } else {
+                    // Si la primera fila no es un array, intentar obtener headers de otra forma
+                    $msg_error = "Error: La respuesta de ClickHouse no tiene el formato esperado";
+                    if (isset($GLOBALS['debug_info'])) {
+                        $debug_info[] = "ERROR: Primera fila no es array: " . gettype($first_row);
+                        $debug_info[] = "Datos recibidos: " . json_encode($result_data);
+                    }
                 }
                 
                 // Convertir a formato esperado (array de arrays asociativos)
                 foreach ($result_data as $row) {
-                    $data[] = $row;
+                    if (is_array($row)) {
+                        $data[] = $row;
+                    }
                 }
+            } else {
+                // Resultado vacío pero válido
+                $headers = [];
+                $data = [];
             }
             
             $GLOBALS['debug_filters'][] = "RESULTADO: " . count($data) . " filas obtenidas";
@@ -334,6 +371,7 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
                 $msg_error .= ": " . $error_info;
             }
             $data = [];
+            $headers = [];
             
             if (isset($GLOBALS['debug_info'])) {
                 $debug_info[] = "ERROR en consulta ClickHouse: " . $msg_error;
@@ -404,6 +442,55 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
         'total_pages' => $total_pages,
         'total_rows' => $total_rows
     );
+
+    // Asegurar que headers siempre sea un array, incluso si está vacío
+    if (!is_array($headers)) {
+        $headers = [];
+    }
+    
+    // Si no hay headers pero hay datos, obtenerlos del primer registro
+    if (empty($headers) && !empty($data) && is_array($data[0])) {
+        $headers = array_keys($data[0]);
+    }
+    
+    // Si aún no hay headers, intentar obtenerlos de la query original
+    if (empty($headers)) {
+        // Intentar parsear la query para obtener nombres de columnas
+        try {
+            if (preg_match('/SELECT\s+(.+?)\s+FROM/i', $Query, $matches)) {
+                $select_part = $matches[1];
+                // Si hay GROUP BY, los headers pueden incluir campos calculados
+                if ($array_groupby && !empty($select_GroupBy)) {
+                    $select_GroupBy_clean = rtrim($select_GroupBy, ',');
+                    $headers = array_map('trim', explode(',', $select_GroupBy_clean));
+                    $headers[] = 'Cantidad';
+                    if (!empty($select_SumBy)) {
+                        // Extraer nombres de campos SumBy
+                        if (preg_match_all('/AS\s+`([^`]+)`/i', $select_SumBy, $sumby_matches)) {
+                            $headers = array_merge($headers, $sumby_matches[1]);
+                        }
+                    }
+                } else {
+                    // Intentar extraer nombres de columnas del SELECT original
+                    $columns = array_map('trim', explode(',', $select_part));
+                    foreach ($columns as $col) {
+                        // Remover alias si existe
+                        if (preg_match('/\s+AS\s+`?([^`\s]+)`?/i', $col, $alias_match)) {
+                            $headers[] = $alias_match[1];
+                        } elseif (preg_match('/`?([^`\s,\.]+)`?/i', trim($col), $col_match)) {
+                            // Remover prefijos como "tb." o "table."
+                            $col_name = preg_replace('/^[^`]+\./', '', $col_match[1]);
+                            if (!empty($col_name) && $col_name !== '*') {
+                                $headers[] = $col_name;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // Si falla el parseo, headers queda como está (vacío)
+        }
+    }
 
     // Return array with data, headers, info, and error message
     return array(

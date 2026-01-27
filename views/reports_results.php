@@ -179,230 +179,6 @@ if ($action == "update" && $form_id == 'editor_query') {
           </div>
         </div>
         <?php } ?>
-        <!-- Debug Accordion -->
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="headingDebug">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDebug" aria-expanded="false" aria-controls="collapseDebug">
-              <i class="fas fa-bug me-2"></i> Debug
-            </button>
-          </h2>
-          <div class="accordion-collapse collapse" id="collapseDebug" aria-labelledby="headingDebug" data-bs-parent="#accordionExample">
-            <div class="accordion-body pt-0">
-              <div class="container-fluid">
-                <!-- Información del Reporte -->
-                <div class="card mb-3">
-                  <div class="card-header bg-body-tertiary">
-                    <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Información del Reporte</h6>
-                  </div>
-                  <div class="card-body">
-                    <div class="row">
-                      <div class="col-md-6">
-                        <p class="mb-1"><strong>ReportsId:</strong> <?php echo isset($row_reports_info['ReportsId']) ? htmlspecialchars($row_reports_info['ReportsId']) : 'N/A'; ?></p>
-                        <p class="mb-1"><strong>ConnectionId:</strong> <?php echo isset($row_reports_info['ConnectionId']) ? htmlspecialchars($row_reports_info['ConnectionId']) : 'N/A'; ?></p>
-                        <p class="mb-1"><strong>Conexión:</strong> <?php echo isset($row_reports_info['conn_title']) ? htmlspecialchars($row_reports_info['conn_title']) : 'N/A'; ?></p>
-                        <p class="mb-1"><strong>Schema:</strong> <?php echo isset($row_reports_info['conn_schema']) ? htmlspecialchars($row_reports_info['conn_schema']) : 'N/A'; ?></p>
-                      </div>
-                      <div class="col-md-6">
-                        <p class="mb-1"><strong>Total Rows:</strong> <?php echo isset($array_info['total_rows']) ? number_format($array_info['total_rows']) : 'N/A'; ?></p>
-                        <p class="mb-1"><strong>Page Rows:</strong> <?php echo isset($array_info['page_rows']) ? number_format($array_info['page_rows']) : 'N/A'; ?></p>
-                        <?php if (isset($array_reports['error']) && !empty($array_reports['error'])): ?>
-                        <p class="mb-1"><strong class="text-danger">Error:</strong> <span class="text-danger"><?php echo htmlspecialchars($array_reports['error']); ?></span></p>
-                        <?php endif; ?>
-                        <?php if (isset($array_headers['error']) && !empty($array_headers['error'])): ?>
-                        <p class="mb-1"><strong class="text-danger">Error (Headers):</strong> <span class="text-danger"><?php echo htmlspecialchars($array_headers['error']); ?></span></p>
-                        <?php endif; ?>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Debug Específico de Resultados del Reporte -->
-                <div class="card mb-3">
-                  <div class="card-header bg-primary text-white">
-                    <h6 class="mb-0"><i class="fas fa-filter me-2"></i>Consulta SQL del Reporte</h6>
-                  </div>
-                  <div class="card-body">
-                    <?php 
-                    // Obtener la consulta SQL del reporte
-                    $report_query = isset($Query) ? trim($Query) : '';
-                    $reports_id = isset($row_reports_info['ReportsId']) ? $row_reports_info['ReportsId'] : 0;
-                    $connection_id = isset($row_reports_info['ConnectionId']) ? $row_reports_info['ConnectionId'] : 0;
-                    
-                    // Obtener información de debug específica de filtros
-                    $debug_filters = isset($GLOBALS['debug_filters']) && is_array($GLOBALS['debug_filters']) ? $GLOBALS['debug_filters'] : [];
-                    
-                    // Filtrar solo mensajes relacionados con la consulta SQL del reporte
-                    $filtered_debug = [];
-                    
-                    if (empty($report_query)) {
-                      echo '<div class="alert alert-warning mb-0">No hay consulta SQL del reporte disponible.</div>';
-                    } else {
-                      // Normalizar la consulta del reporte para comparación
-                      // Extraer la parte central de la consulta (lo que está dentro del SELECT ... FROM)
-                      $report_query_normalized = preg_replace('/\s+/', ' ', strtolower(trim($report_query)));
-                      
-                      // Buscar palabras clave únicas de la consulta del reporte (primeras 50 palabras)
-                      $report_keywords = [];
-                      $words = explode(' ', $report_query_normalized);
-                      foreach ($words as $word) {
-                        $word = trim($word);
-                        if (strlen($word) > 3 && !in_array(strtolower($word), ['select', 'from', 'where', 'and', 'or', 'join', 'inner', 'left', 'right', 'outer', 'on', 'as', 'tb', 'a', 'b', 'c', 'd', 'e', 'f', 'g'])) {
-                          $report_keywords[] = $word;
-                          if (count($report_keywords) >= 10) break; // Solo las primeras 10 palabras clave
-                        }
-                      }
-                      
-                      // Buscar el bloque de mensajes que contiene la consulta del reporte
-                      $found_report_block = false;
-                      $report_block_start = -1;
-                      $report_block_end = -1;
-                      
-                      // Primero, encontrar dónde empieza el bloque del reporte
-                      foreach ($debug_filters as $index => $msg) {
-                        if (stripos($msg, 'SQL EJECUTADO') !== false) {
-                          // Normalizar el mensaje para comparación
-                          $msg_normalized = preg_replace('/\s+/', ' ', strtolower($msg));
-                          
-                          // Verificar si este mensaje contiene la consulta del reporte
-                          // Buscar si contiene suficientes palabras clave del reporte
-                          $matches = 0;
-                          foreach ($report_keywords as $keyword) {
-                            if (stripos($msg_normalized, $keyword) !== false) {
-                              $matches++;
-                            }
-                          }
-                          
-                          // Si tiene al menos 3 palabras clave o contiene la consulta completa, es el reporte
-                          if ($matches >= 3 || stripos($msg_normalized, $report_query_normalized) !== false) {
-                            // Verificar que NO sea una consulta del sistema
-                            $is_system = false;
-                            $system_patterns = [
-                              '/\bFROM\s+[`\']?users[`\']?\s/i',
-                              '/\bFROM\s+[`\']?category[`\']?\s/i',
-                              '/\bFROM\s+[`\']?connections[`\']?\s/i',
-                              '/\bFROM\s+[`\']?reports[`\']?\s/i',
-                              '/\bFROM\s+[`\']?types[`\']?\s/i',
-                              '/\bFROM\s+[`\']?pipelines[`\']?\s/i',
-                              '/WHERE\s+a\.ReportsId\s*=\s*\d+/i', // Consultas que buscan por ReportsId (del sistema)
-                              '/WHERE\s+a\.UsersId\s*=\s*\d+/i',   // Consultas que buscan por UsersId (del sistema)
-                            ];
-                            
-                            foreach ($system_patterns as $pattern) {
-                              if (preg_match($pattern, $msg)) {
-                                $is_system = true;
-                                break;
-                              }
-                            }
-                            
-                            if (!$is_system) {
-                              $found_report_block = true;
-                              $report_block_start = $index;
-                              break;
-                            }
-                          }
-                        }
-                      }
-                      
-                      // Si encontramos el bloque, extraer todos los mensajes relacionados
-                      if ($found_report_block && $report_block_start >= 0) {
-                        // Buscar hasta encontrar el siguiente SQL EJECUTADO o hasta el final
-                        for ($i = $report_block_start; $i < count($debug_filters); $i++) {
-                          $msg = $debug_filters[$i];
-                          
-                          // Si encontramos otro SQL EJECUTADO que no es del reporte, parar
-                          if ($i > $report_block_start && stripos($msg, 'SQL EJECUTADO') !== false) {
-                            // Verificar si es del sistema
-                            $is_system = false;
-                            foreach (['users', 'category', 'connections', 'reports', 'types', 'pipelines'] as $table) {
-                              if (preg_match('/\bFROM\s+[`\']?' . preg_quote($table, '/') . '[`\']?\s/i', $msg)) {
-                                $is_system = true;
-                                break;
-                              }
-                            }
-                            if (!$is_system) {
-                              // Es otra consulta del reporte, continuar
-                              continue;
-                            } else {
-                              // Es del sistema, parar aquí
-                              break;
-                            }
-                          }
-                          
-                          $filtered_debug[] = $msg;
-                        }
-                      }
-                      
-                      // Si no encontramos en debug_filters, mostrar la consulta directamente
-                      if (empty($filtered_debug) && !empty($report_query)) {
-                        $filtered_debug[] = 'SQL EJECUTADO: ' . $report_query;
-                        if (isset($array_reports['info']['total_rows'])) {
-                          $filtered_debug[] = 'TOTAL: ' . number_format($array_reports['info']['total_rows']) . ' filas';
-                        }
-                        if (isset($array_reports['info']['page_rows'])) {
-                          $filtered_debug[] = 'RESULTADO: ' . number_format($array_reports['info']['page_rows']) . ' filas obtenidas';
-                        }
-                        if (isset($array_reports['error']) && !empty($array_reports['error'])) {
-                          $filtered_debug[] = 'ERROR: ' . $array_reports['error'];
-                        }
-                      }
-                    }
-                    
-                    if (!empty($filtered_debug)) {
-                      echo '<div class="table-responsive">';
-                      echo '<table class="table table-sm table-bordered mb-0">';
-                      echo '<thead class="table-secondary">';
-                      echo '<tr><th style="width: 50px;">#</th><th>Consulta SQL del Reporte</th></tr>';
-                      echo '</thead>';
-                      echo '<tbody>';
-                      foreach ($filtered_debug as $index => $msg) {
-                        $is_sql = (stripos($msg, 'SQL') !== false);
-                        $is_error = (stripos($msg, 'error') !== false || stripos($msg, 'exception') !== false || stripos($msg, 'ERROR') !== false);
-                        $is_result = (stripos($msg, 'RESULTADO') !== false || stripos($msg, 'TOTAL') !== false || stripos($msg, 'filas') !== false);
-                        $is_filter = (stripos($msg, 'FILTROS') !== false);
-                        $row_class = '';
-                        if ($is_error) {
-                          $row_class = 'table-danger';
-                        } elseif ($is_sql) {
-                          $row_class = 'table-info';
-                        } elseif ($is_result) {
-                          $row_class = 'table-success';
-                        } elseif ($is_filter) {
-                          $row_class = 'table-warning';
-                        }
-                        echo '<tr class="' . $row_class . '">';
-                        echo '<td class="text-center">' . ($index + 1) . '</td>';
-                        if ($is_sql) {
-                          // Para queries SQL, mostrar en un formato más legible
-                          echo '<td><pre style="font-size: 11px; margin: 0; white-space: pre-wrap; word-wrap: break-word; background: #f8f9fa; padding: 8px; border-radius: 4px;">' . htmlspecialchars($msg) . '</pre></td>';
-                        } else {
-                          echo '<td><code style="font-size: 11px;">' . htmlspecialchars($msg) . '</code></td>';
-                        }
-                        echo '</tr>';
-                      }
-                      echo '</tbody>';
-                      echo '</table>';
-                      echo '</div>';
-                    } else {
-                      echo '<div class="alert alert-info mb-0">No hay información de debug disponible. El reporte se ejecutó correctamente.</div>';
-                    }
-                    ?>
-                  </div>
-                </div>
-                
-                <!-- Información de DataTables (si hay error) -->
-                <div id="datatables-debug" class="card mt-3" style="display: none;">
-                  <div class="card-header bg-warning">
-                    <h6 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Error de DataTables</h6>
-                  </div>
-                  <div class="card-body">
-                    <div id="datatables-error-message" class="text-danger"></div>
-                    <pre id="datatables-error-details" class="mt-2" style="font-size: 11px; max-height: 300px; overflow-y: auto;"></pre>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     <?php } ?>
     </div>
@@ -425,10 +201,19 @@ document.getElementById("query_form").addEventListener("submit", function (event
 });
 
 // Inicializar DataTables con paginación del lado del servidor
-<?php if(isset($array_reports['headers']) && is_array($array_reports['headers']) && !empty($array_reports['headers']) && isset($row_reports_info['ReportsId'])): ?>
+<?php 
+// Usar headers de array_reports o array_headers como respaldo
+$datatable_headers = null;
+if (isset($array_reports['headers']) && is_array($array_reports['headers']) && !empty($array_reports['headers'])) {
+    $datatable_headers = $array_reports['headers'];
+} elseif (isset($array_headers['headers']) && is_array($array_headers['headers']) && !empty($array_headers['headers'])) {
+    $datatable_headers = $array_headers['headers'];
+}
+
+if ($datatable_headers && !empty($datatable_headers) && isset($row_reports_info['ReportsId'])): ?>
 $(document).ready(function() {
-    var columnCount = <?php echo count($array_reports['headers']); ?>;
-    var headers = <?php echo json_encode($array_reports['headers']); ?>;
+    var columnCount = <?php echo count($datatable_headers); ?>;
+    var headers = <?php echo json_encode($datatable_headers); ?>;
     var columns = [];
     for (var i = 0; i < columnCount; i++) {
         var columnConfig = {
@@ -474,64 +259,12 @@ $(document).ready(function() {
                 <?php endif; ?>
             },
             "dataSrc": function(json) {
-                // Mostrar debug de filtros en consola sin interferir
-                if (json.debug_filters) {
-                    console.log("=== DEBUG FILTROS (AJAX) ===");
-                    json.debug_filters.forEach(function(msg) {
-                        console.log(msg);
-                    });
-                    
-                    // Mostrar alerta si hay discrepancia
-                    if (json.recordsTotal > 0 && json.recordsTotal > 10) {
-                        console.warn("⚠️ ADVERTENCIA: DataTables recibió " + json.recordsTotal + " registros. ¿Los filtros se aplicaron correctamente?");
-                    }
-                }
                 // Retornar los datos para DataTables
                 return json.data;
             },
             "error": function(xhr, error, thrown) {
                 console.error("Error en DataTables:", error, thrown);
-                console.error("Response:", xhr.responseText);
-                
-                // Mostrar debug de filtros si está disponible
-                try {
-                    var response = JSON.parse(xhr.responseText);
-                    if (response.debug_filters) {
-                        console.log("=== DEBUG FILTROS (AJAX) ===");
-                        response.debug_filters.forEach(function(msg) {
-                            console.log(msg);
-                        });
-                    }
-                } catch(e) {}
-                
-                // Mostrar error en el accordion de debug
-                var errorDiv = document.getElementById('datatables-debug');
-                var errorMsg = document.getElementById('datatables-error-message');
-                var errorDetails = document.getElementById('datatables-error-details');
-                
-                if (errorDiv && errorMsg && errorDetails) {
-                    errorDiv.style.display = 'block';
-                    errorMsg.textContent = "Error: " + error + " - " + thrown;
-                    
-                    var responseText = xhr.responseText || 'Sin respuesta del servidor';
-                    try {
-                        var jsonResponse = JSON.parse(responseText);
-                        errorDetails.textContent = JSON.stringify(jsonResponse, null, 2);
-                        if (jsonResponse.debug && Array.isArray(jsonResponse.debug)) {
-                            errorDetails.textContent += "\n\nDebug Info:\n" + jsonResponse.debug.join("\n");
-                        }
-                    } catch (e) {
-                        errorDetails.textContent = responseText.substring(0, 2000);
-                    }
-                    
-                    // Expandir el accordion de debug
-                    var debugButton = document.querySelector('[data-bs-target="#collapseDebug"]');
-                    if (debugButton && !debugButton.classList.contains('collapsed')) {
-                        debugButton.click();
-                    }
-                }
-                
-                alert("Error al cargar los datos: " + error + "\n\nRevisa el accordion de Debug para más detalles.");
+                alert("Error al cargar los datos: " + error);
             }
         },
         "pageLength": <?php echo isset($Limit) && $Limit > 0 ? $Limit : 10; ?>,
