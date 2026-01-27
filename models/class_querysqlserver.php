@@ -1,7 +1,7 @@
 <?php
 require_once('class_connsqlserver.php');
 
-function class_querySqlServer($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start = null, $length = null, $array_sumby = null) {
+function class_querySqlServer($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start = null, $length = null, $array_sumby = null, $OrderBy = null) {
     // Validar que la Query no esté vacía
     if (empty(trim($Query))) {
         return [
@@ -180,8 +180,15 @@ function class_querySqlServer($ConnectionId, $Query, $ArrayFilter, $array_groupb
         }
     }
 
+    // Construir ORDER BY
+    $query_order_by = '';
+    if (!empty($OrderBy)) {
+        // OrderBy ya viene formateado con corchetes desde data.php para SQL Server
+        $query_order_by = " ORDER BY " . $OrderBy;
+    }
+    
     // Construir query base
-    $base_query = "SELECT tb.* FROM (" . $Query . ") AS tb " . $query_where;
+    $base_query = "SELECT tb.* FROM (" . $Query . ") AS tb " . $query_where . $query_order_by;
 
     // Group By or Details
     if ($array_groupby && !empty($GroupBy) && !empty($select_GroupBy)) {
@@ -192,7 +199,11 @@ function class_querySqlServer($ConnectionId, $Query, $ArrayFilter, $array_groupb
             $select_fields .= ", " . $select_SumBy;
         }
         
-        $query = "SELECT " . $select_fields . " FROM (" . $Query . ") AS tb " . $query_where . " " . $GroupBy . " ORDER BY Cantidad DESC";
+        // Si hay OrderBy personalizado, usarlo; si no, usar el orden por defecto (Cantidad DESC)
+        // OrderBy ya viene formateado con corchetes desde data.php para SQL Server
+        $groupby_order_by = !empty($OrderBy) ? " ORDER BY " . $OrderBy : " ORDER BY Cantidad DESC";
+        
+        $query = "SELECT " . $select_fields . " FROM (" . $Query . ") AS tb " . $query_where . " " . $GroupBy . $groupby_order_by;
         
         // Agregar paginación si es necesario
         if ($start !== null && $length !== null) {
@@ -205,12 +216,15 @@ function class_querySqlServer($ConnectionId, $Query, $ArrayFilter, $array_groupb
         // Query sin GroupBy
         if ($Limit && $start === null && $length === null) {
             // Si solo hay Limit, usar TOP
-            $query = "SELECT TOP " . intval($Limit) . " tb.* FROM (" . $Query . ") AS tb " . $query_where;
+            $query = "SELECT TOP " . intval($Limit) . " tb.* FROM (" . $Query . ") AS tb " . $query_where . $query_order_by;
         } else {
             $query = $base_query;
             if ($start !== null && $length !== null) {
-                // Necesitamos ORDER BY para usar OFFSET/FETCH
-                $query .= " ORDER BY (SELECT NULL) " . $query_limit;
+                // Si no hay OrderBy, necesitamos uno para usar OFFSET/FETCH
+                if (empty($query_order_by)) {
+                    $query .= " ORDER BY (SELECT NULL)";
+                }
+                $query .= " " . $query_limit;
             }
         }
     }

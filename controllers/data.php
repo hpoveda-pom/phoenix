@@ -497,6 +497,63 @@ if ($action == "datatables") {
     $length = isset($_GET['length']) ? intval($_GET['length']) : 10;
     $search_value = isset($_GET['search']['value']) ? $_GET['search']['value'] : '';
     
+    // Obtener parámetros de ordenamiento de DataTables
+    $order_by = null;
+    if (isset($_GET['order']) && is_array($_GET['order']) && !empty($_GET['order'])) {
+        // Primero necesitamos obtener los headers para mapear el índice de columna al nombre
+        // Hacer una consulta rápida para obtener los headers (sin paginación para ser más rápido)
+        $temp_headers = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, 0, 1, $sumby_results);
+        $headers = isset($temp_headers['headers']) && is_array($temp_headers['headers']) ? $temp_headers['headers'] : [];
+        
+        if (!empty($headers)) {
+            // Detectar el tipo de conector para usar el formato correcto de nombres de columnas
+            $connector_type = null;
+            global $conn_phoenix;
+            if (isset($conn_phoenix) && $conn_phoenix instanceof mysqli && !$conn_phoenix->connect_error) {
+                $stmt = $conn_phoenix->prepare("SELECT Connector FROM connections WHERE ConnectionId = ? AND Status = 1");
+                if ($stmt) {
+                    $stmt->bind_param('i', $row_reports_info['ConnectionId']);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    if ($result && $row = $result->fetch_assoc()) {
+                        $connector_type = isset($row['Connector']) ? strtolower(trim($row['Connector'])) : null;
+                    }
+                    $stmt->close();
+                }
+            }
+            
+            $order_parts = [];
+            foreach ($_GET['order'] as $order_item) {
+                if (isset($order_item['column']) && isset($order_item['dir'])) {
+                    $column_index = intval($order_item['column']);
+                    $direction = strtoupper($order_item['dir']) == 'DESC' ? 'DESC' : 'ASC';
+                    
+                    // Mapear el índice de columna al nombre del header
+                    if (isset($headers[$column_index])) {
+                        $column_name = $headers[$column_index];
+                        
+                        // Escapar el nombre de columna según el conector
+                        if ($connector_type == 'sqlserver' || $connector_type == 'mssql') {
+                            // SQL Server usa corchetes
+                            $order_parts[] = "[" . str_replace(']', ']]', $column_name) . "] " . $direction;
+                        } else {
+                            // MySQL, ClickHouse, etc. usan backticks
+                            $order_parts[] = "`" . str_replace('`', '``', $column_name) . "` " . $direction;
+                        }
+                    }
+                }
+            }
+            if (!empty($order_parts)) {
+                $order_by = implode(', ', $order_parts);
+                // Debug: Log del ORDER BY construido
+                if (!isset($GLOBALS['debug_filters'])) {
+                    $GLOBALS['debug_filters'] = [];
+                }
+                $GLOBALS['debug_filters'][] = "ORDER BY construido: " . $order_by;
+            }
+        }
+    }
+    
     // Validar que exista la información del reporte
     if (!isset($row_reports_info)) {
       throw new Exception('$row_reports_info no está definido');
@@ -508,9 +565,9 @@ if ($action == "datatables") {
       throw new Exception('Query no está definido en $row_reports_info');
     }
     
-    // Ejecutar consulta con paginación primero para obtener los headers correctos
+    // Ejecutar consulta con paginación y ordenamiento
     // (especialmente importante cuando hay GroupBy o SumBy, ya que los headers cambian)
-    $array_reports = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, $start, $length, $sumby_results);
+    $array_reports = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null, $start, $length, $sumby_results, $order_by);
     
     // Obtener headers de la consulta ejecutada (que ya incluye GroupBy/SumBy si aplica)
     $array_headers = $array_reports;
@@ -646,6 +703,11 @@ if ($action == "datatables") {
     // Si hay error, agregarlo a la respuesta
     if (isset($array_reports['error']) && !empty($array_reports['error'])) {
       $response['error'] = $array_reports['error'];
+    }
+    
+    // Agregar información de debug si está disponible (solo en desarrollo)
+    if (isset($GLOBALS['debug_filters']) && !empty($GLOBALS['debug_filters'])) {
+      $response['debug'] = $GLOBALS['debug_filters'];
     }
     
     // Validar JSON antes de enviar

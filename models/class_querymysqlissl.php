@@ -4,9 +4,9 @@
 
 require_once('class_querymysqli.php');
 
-function class_queryMysqliSSL($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start = null, $length = null, $array_sumby = null) {
+function class_queryMysqliSSL($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start = null, $length = null, $array_sumby = null, $OrderBy = null) {
     // Reutilizar la función de mysqli estándar ya que funciona igual con SSL
     // La diferencia está solo en la conexión, no en las consultas
-    return class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start, $length, $array_sumby);
+    return class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start, $length, $array_sumby, $OrderBy);
 }
 ?>

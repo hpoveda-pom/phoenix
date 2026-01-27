@@ -1,5 +1,5 @@
 <?php
-function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start = null, $length = null, $array_sumby = null) {
+function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, $Limit, $start = null, $length = null, $array_sumby = null, $OrderBy = null) {
     // Validar que la Query no esté vacía
     if (empty(trim($Query))) {
         return [
@@ -249,7 +249,28 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
         }
     }
 
-    $query = "SELECT tb.* FROM (" . $Query . ")tb " . $query_where . " " . $query_limit;
+    // Construir ORDER BY
+    $query_order_by = '';
+    if (!empty($OrderBy)) {
+        $query_order_by = " ORDER BY " . $OrderBy;
+        if (!isset($GLOBALS['debug_filters'])) {
+            $GLOBALS['debug_filters'] = [];
+        }
+        $GLOBALS['debug_filters'][] = "ORDER BY recibido: " . $OrderBy;
+    }
+    
+    // Construir la query: WHERE debe ir antes de ORDER BY, y ORDER BY antes de LIMIT
+    // Si no hay WHERE, no incluir la cláusula WHERE
+    $query = "SELECT tb.* FROM (" . $Query . ")tb";
+    if (!empty($query_where)) {
+        $query .= " " . $query_where;
+    }
+    if (!empty($query_order_by)) {
+        $query .= $query_order_by;
+    }
+    if (!empty($query_limit)) {
+        $query .= " " . $query_limit;
+    }
 
     // Group By or Details
     if ($array_groupby && !empty($GroupBy) && !empty($select_GroupBy)) {
@@ -273,7 +294,10 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
             $select_fields .= ", " . $select_SumBy;
         }
         
-        $query = "SELECT " . $select_fields . " FROM (" . $Query . ")tb " . $query_where . " " . $GroupBy . " ORDER BY Cantidad DESC" . " " . $query_limit;
+        // Si hay OrderBy personalizado, usarlo; si no, usar el orden por defecto (Cantidad DESC)
+        $groupby_order_by = !empty($OrderBy) ? " ORDER BY " . $OrderBy : " ORDER BY Cantidad DESC";
+        
+        $query = "SELECT " . $select_fields . " FROM (" . $Query . ")tb " . $query_where . " " . $GroupBy . $groupby_order_by . " " . $query_limit;
         
         if (isset($GLOBALS['debug_info'])) {
             $debug_info[] = "Query SQL final: " . $query;

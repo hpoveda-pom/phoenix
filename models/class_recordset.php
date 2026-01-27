@@ -1,7 +1,7 @@
 <?php
 require_once('class_queryclickhouse.php');
 
-function class_Recordset($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start = null, $length = null, $SumBy = null){
+function class_Recordset($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start = null, $length = null, $SumBy = null, $OrderBy = null){
 	$results = null;
 	
 	// Obtener el tipo de conector desde la base de datos
@@ -46,27 +46,27 @@ function class_Recordset($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $star
 		case 'mysqli':
 		case 'mysql':
 		case 'mariadb':
-			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
+			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy, $OrderBy);
 			break;
 		case 'mysqlissl':
 			require_once('class_querymysqlissl.php');
-			$results = class_queryMysqliSSL($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
+			$results = class_queryMysqliSSL($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy, $OrderBy);
 			break;
 		case 'oci':
 		case 'oracle':
 			$results = class_queryOci($ConnectionId, $Query, $Filter, $GroupBy, $Limit);
 			break;
 		case 'clickhouse':
-			$results = class_queryClickHouse($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
+			$results = class_queryClickHouse($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy, $OrderBy);
 			break;
 		case 'sqlserver':
 		case 'mssql':
 			require_once('class_querysqlserver.php');
-			$results = class_querySqlServer($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
+			$results = class_querySqlServer($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy, $OrderBy);
 			break;
 		default:
 			// Por defecto intentar con MySQLi
-			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
+			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy, $OrderBy);
 			break;
 	}
 
