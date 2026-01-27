@@ -65,114 +65,163 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Procesar imagen del avatar
                 $avatar_path = null;
                 if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
-                    $upload_dir = 'assets/images/avatars/';
-                    if (!file_exists($upload_dir)) {
-                        mkdir($upload_dir, 0755, true);
+                    // Usar ruta absoluta basada en el directorio del script
+                    $base_dir = dirname(__FILE__);
+                    $upload_dir_relative = 'assets/images/avatars/';
+                    $upload_dir_absolute = $base_dir . '/' . $upload_dir_relative;
+                    
+                    // Crear directorio si no existe con permisos correctos
+                    if (!file_exists($upload_dir_absolute)) {
+                        if (!@mkdir($upload_dir_absolute, 0755, true)) {
+                            $message = 'Error al crear el directorio de avatares. Verifique los permisos del servidor.';
+                            $message_type = 'danger';
+                        }
                     }
                     
-                    $file = $_FILES['avatar'];
-                    $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-                    $max_size = 5 * 1024 * 1024; // 5MB
+                    // Verificar que el directorio sea escribible
+                    if (file_exists($upload_dir_absolute) && !is_writable($upload_dir_absolute)) {
+                        // Intentar cambiar permisos
+                        @chmod($upload_dir_absolute, 0755);
+                        if (!is_writable($upload_dir_absolute)) {
+                            $message = 'El directorio de avatares no tiene permisos de escritura. Contacte al administrador del servidor.';
+                            $message_type = 'danger';
+                        }
+                    }
                     
-                    if (!in_array($file['type'], $allowed_types)) {
-                        $message = 'Tipo de archivo no permitido. Solo se permiten imágenes (JPG, PNG, GIF, WEBP)';
-                        $message_type = 'danger';
-                    } elseif ($file['size'] > $max_size) {
-                        $message = 'El archivo es demasiado grande. Máximo 5MB';
-                        $message_type = 'danger';
-                    } else {
-                        // Generar nombre único
-                        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-                        $new_filename = 'avatar_' . $user_id . '_' . time() . '.' . $extension;
-                        $target_path = $upload_dir . $new_filename;
+                    // Solo continuar si no hay errores de permisos
+                    if (empty($message)) {
+                        $file = $_FILES['avatar'];
+                        $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+                        $max_size = 5 * 1024 * 1024; // 5MB
                         
-                        // Redimensionar y optimizar la imagen
-                        if (move_uploaded_file($file['tmp_name'], $target_path)) {
-                            // Redimensionar a 200x200 manteniendo proporción
-                            $image_info = getimagesize($target_path);
-                            if ($image_info) {
-                                $width = $image_info[0];
-                                $height = $image_info[1];
-                                $type = $image_info[2];
+                        if (!in_array($file['type'], $allowed_types)) {
+                            $message = 'Tipo de archivo no permitido. Solo se permiten imágenes (JPG, PNG, GIF, WEBP)';
+                            $message_type = 'danger';
+                        } elseif ($file['size'] > $max_size) {
+                            $message = 'El archivo es demasiado grande. Máximo 5MB';
+                            $message_type = 'danger';
+                        } else {
+                            // Generar nombre único
+                            $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+                            $new_filename = 'avatar_' . ($user_id > 0 ? $user_id : 'new') . '_' . time() . '.' . $extension;
+                            $target_path_absolute = $upload_dir_absolute . $new_filename;
+                            
+                            // Ruta relativa para guardar en la base de datos
+                            $avatar_relative_path = $upload_dir_relative . $new_filename;
+                            
+                            // Mover archivo y redimensionar si GD está disponible
+                            if (@move_uploaded_file($file['tmp_name'], $target_path_absolute)) {
+                                // Verificar si GD está disponible para redimensionar
+                                $gd_available = extension_loaded('gd') && function_exists('imagecreatefromjpeg');
                                 
-                                // Crear imagen desde archivo
-                                switch ($type) {
-                                    case IMAGETYPE_JPEG:
-                                        $source = imagecreatefromjpeg($target_path);
-                                        break;
-                                    case IMAGETYPE_PNG:
-                                        $source = imagecreatefrompng($target_path);
-                                        break;
-                                    case IMAGETYPE_GIF:
-                                        $source = imagecreatefromgif($target_path);
-                                        break;
-                                    case IMAGETYPE_WEBP:
-                                        $source = imagecreatefromwebp($target_path);
-                                        break;
-                                    default:
-                                        $source = false;
-                                }
-                                
-                                if ($source) {
-                                    // Calcular nuevas dimensiones (máximo 200x200, manteniendo proporción)
-                                    $max_size = 200;
-                                    if ($width > $height) {
-                                        $new_width = $max_size;
-                                        $new_height = intval(($height * $max_size) / $width);
-                                    } else {
-                                        $new_height = $max_size;
-                                        $new_width = intval(($width * $max_size) / $height);
-                                    }
+                                if ($gd_available) {
+                                // Redimensionar a 200x200 manteniendo proporción
+                                $image_info = getimagesize($target_path_absolute);
+                                if ($image_info) {
+                                    $width = $image_info[0];
+                                    $height = $image_info[1];
+                                    $type = $image_info[2];
                                     
-                                    // Crear imagen redimensionada
-                                    $resized = imagecreatetruecolor($new_width, $new_height);
-                                    
-                                    // Mantener transparencia para PNG y GIF
-                                    if ($type == IMAGETYPE_PNG || $type == IMAGETYPE_GIF) {
-                                        imagealphablending($resized, false);
-                                        imagesavealpha($resized, true);
-                                        $transparent = imagecolorallocatealpha($resized, 255, 255, 255, 127);
-                                        imagefilledrectangle($resized, 0, 0, $new_width, $new_height, $transparent);
-                                    }
-                                    
-                                    imagecopyresampled($resized, $source, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
-                                    
-                                    // Guardar imagen optimizada
+                                    // Crear imagen desde archivo
+                                    $source = false;
                                     switch ($type) {
                                         case IMAGETYPE_JPEG:
-                                            imagejpeg($resized, $target_path, 85);
+                                            if (function_exists('imagecreatefromjpeg')) {
+                                                $source = imagecreatefromjpeg($target_path_absolute);
+                                            }
                                             break;
                                         case IMAGETYPE_PNG:
-                                            imagepng($resized, $target_path, 6);
+                                            if (function_exists('imagecreatefrompng')) {
+                                                $source = imagecreatefrompng($target_path_absolute);
+                                            }
                                             break;
                                         case IMAGETYPE_GIF:
-                                            imagegif($resized, $target_path);
+                                            if (function_exists('imagecreatefromgif')) {
+                                                $source = imagecreatefromgif($target_path_absolute);
+                                            }
                                             break;
                                         case IMAGETYPE_WEBP:
-                                            imagewebp($resized, $target_path, 85);
+                                            if (function_exists('imagecreatefromwebp')) {
+                                                $source = imagecreatefromwebp($target_path_absolute);
+                                            }
                                             break;
                                     }
                                     
-                                    imagedestroy($source);
-                                    imagedestroy($resized);
-                                }
-                            }
-                            
-                            // Eliminar avatar anterior si existe
-                            if ($user_id > 0) {
-                                $old_avatar_result = $conn_phoenix->query("SELECT AvatarImage FROM users WHERE UsersId = $user_id");
-                                if ($old_avatar_result && $old_avatar_result->num_rows > 0) {
-                                    $old_avatar_row = $old_avatar_result->fetch_assoc();
-                                    if (!empty($old_avatar_row['AvatarImage']) && file_exists($old_avatar_row['AvatarImage'])) {
-                                        @unlink($old_avatar_row['AvatarImage']);
+                                    if ($source) {
+                                        // Calcular nuevas dimensiones (máximo 200x200, manteniendo proporción)
+                                        $max_size = 200;
+                                        if ($width > $height) {
+                                            $new_width = $max_size;
+                                            $new_height = intval(($height * $max_size) / $width);
+                                        } else {
+                                            $new_height = $max_size;
+                                            $new_width = intval(($width * $max_size) / $height);
+                                        }
+                                        
+                                        // Crear imagen redimensionada
+                                        $resized = imagecreatetruecolor($new_width, $new_height);
+                                        
+                                        // Mantener transparencia para PNG y GIF
+                                        if ($type == IMAGETYPE_PNG || $type == IMAGETYPE_GIF) {
+                                            imagealphablending($resized, false);
+                                            imagesavealpha($resized, true);
+                                            $transparent = imagecolorallocatealpha($resized, 255, 255, 255, 127);
+                                            imagefilledrectangle($resized, 0, 0, $new_width, $new_height, $transparent);
+                                        }
+                                        
+                                        imagecopyresampled($resized, $source, 0, 0, 0, 0, $new_width, $new_height, $width, $height);
+                                        
+                                        // Guardar imagen optimizada
+                                        switch ($type) {
+                                            case IMAGETYPE_JPEG:
+                                                if (function_exists('imagejpeg')) {
+                                                    imagejpeg($resized, $target_path_absolute, 85);
+                                                }
+                                                break;
+                                            case IMAGETYPE_PNG:
+                                                if (function_exists('imagepng')) {
+                                                    imagepng($resized, $target_path_absolute, 6);
+                                                }
+                                                break;
+                                            case IMAGETYPE_GIF:
+                                                if (function_exists('imagegif')) {
+                                                    imagegif($resized, $target_path_absolute);
+                                                }
+                                                break;
+                                            case IMAGETYPE_WEBP:
+                                                if (function_exists('imagewebp')) {
+                                                    imagewebp($resized, $target_path_absolute, 85);
+                                                }
+                                                break;
+                                        }
+                                        
+                                        imagedestroy($source);
+                                        imagedestroy($resized);
                                     }
                                 }
+                                }
+                                // Si GD no está disponible, la imagen se guarda tal cual (sin redimensionar)
+                                
+                                // Eliminar avatar anterior si existe
+                                if ($user_id > 0) {
+                                    $old_avatar_result = $conn_phoenix->query("SELECT AvatarImage FROM users WHERE UsersId = $user_id");
+                                    if ($old_avatar_result && $old_avatar_result->num_rows > 0) {
+                                        $old_avatar_row = $old_avatar_result->fetch_assoc();
+                                        if (!empty($old_avatar_row['AvatarImage'])) {
+                                            $old_avatar_full_path = $base_dir . '/' . $old_avatar_row['AvatarImage'];
+                                            if (file_exists($old_avatar_full_path)) {
+                                                @unlink($old_avatar_full_path);
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                $avatar_path = $avatar_relative_path;
+                            } else {
+                                $error_msg = error_get_last();
+                                $message = 'Error al subir la imagen. ' . ($error_msg ? $error_msg['message'] : 'Verifique los permisos del directorio.');
+                                $message_type = 'danger';
                             }
-                            
-                            $avatar_path = $target_path;
-                        } else {
-                            $message = 'Error al subir la imagen';
-                            $message_type = 'danger';
                         }
                     }
                 } elseif ($user_id > 0 && !isset($_FILES['avatar'])) {
