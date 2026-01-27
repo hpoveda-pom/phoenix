@@ -1,6 +1,8 @@
 <?php
 require_once('class_connclickhouse.php');
+require_once('class_connmysqli.php');
 require_once('class_connmysqlissl.php');
+require_once('class_connsqlserver.php');
 
 function class_Connections($Id){
     global $row_config, $conn_phoenix;
@@ -272,6 +274,50 @@ function class_Connections($Id){
                                     }
                                 }
                             }
+                        }
+                    } elseif ($row['Connector'] == 'sqlserver' || $row['Connector'] == 'mssql') {
+                        // Para SQL Server, usar Schema como database (o ServiceName como fallback)
+                        if (!empty($schema)) {
+                            $database = $schema;
+                        } elseif (!empty($service_name)) {
+                            $database = $service_name;
+                        } else {
+                            $database = '';
+                        }
+                        
+                        // Puerto por defecto para SQL Server: 1433
+                        if (empty($port)) {
+                            $port = '1433';
+                        }
+                        
+                        if ($debug_detailed) {
+                            $debug_info[] = "  → Database determinada: '$database' (Schema: '$schema', ServiceName: '$service_name')";
+                            $debug_info[] = "  → Intentando conectar a SQL Server: $hostname:$port/$database (usuario: $username)";
+                        }
+                        
+                        // Validar que la base de datos no esté vacía
+                        if (!empty($database)) {
+                            $conn = class_connSqlServer($hostname, $port, $username, $password, $database);
+                            
+                            if ($conn) {
+                                if ($debug_detailed) {
+                                    $debug_info[] = "  ✓ Conexión SQL Server establecida exitosamente";
+                                }
+                            } else {
+                                $debug_info[] = "  ✗ Error al establecer conexión SQL Server para ConnectionId: $Id";
+                                // Capturar error en el array global
+                                if (!isset($GLOBALS['phoenix_errors_warnings'])) {
+                                    $GLOBALS['phoenix_errors_warnings'] = [];
+                                }
+                                $GLOBALS['phoenix_errors_warnings'][] = [
+                                    'type' => 'error',
+                                    'source' => 'class_Connections - SQL Server Connection',
+                                    'message' => "Error al establecer conexión SQL Server para ConnectionId: $Id (Host: $hostname, DB: $database, User: $username)",
+                                    'timestamp' => date('Y-m-d H:i:s')
+                                ];
+                            }
+                        } else {
+                            $debug_info[] = "  ✗ Base de datos vacía o no determinada";
                         }
                     } else {
                         // Para otros conectores, usar ServiceName

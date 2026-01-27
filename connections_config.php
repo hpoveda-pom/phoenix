@@ -1,4 +1,127 @@
 <?php
+// Endpoint AJAX para obtener estadísticas de conexión (tablas, views, SPs)
+if (isset($_GET['action']) && $_GET['action'] === 'get_connection_stats' && isset($_GET['id'])) {
+    require_once('config.php');
+    require_once('conn/phoenix.php');
+    require_once('models/class_connections.php');
+    
+    $test_id = intval($_GET['id']);
+    
+    ob_clean();
+    
+    $stats = [
+        'tables' => 0,
+        'views' => 0,
+        'sps' => 0,
+        'error' => null
+    ];
+    
+    try {
+        // Obtener información de la conexión
+        global $conn_phoenix;
+        $result = $conn_phoenix->query("SELECT Connector, Hostname, Port, Username, Password, ServiceName, `Schema` FROM connections WHERE ConnectionId = $test_id");
+        if ($result && $row = $result->fetch_assoc()) {
+            $connector = strtolower(trim($row['Connector']));
+            $conn = class_Connections($test_id);
+            
+            if ($conn) {
+                if ($connector == 'mysqli' || $connector == 'mysqlissl' || $connector == 'mysql' || $connector == 'mariadb') {
+                    // MySQL/MariaDB
+                    $database = !empty($row['Schema']) ? $row['Schema'] : (!empty($row['ServiceName']) ? $row['ServiceName'] : '');
+                    if ($database) {
+                        // Tablas
+                        $tables_result = $conn->query("SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = '" . $conn->real_escape_string($database) . "' AND table_type = 'BASE TABLE'");
+                        if ($tables_result) {
+                            $tables_row = $tables_result->fetch_assoc();
+                            $stats['tables'] = intval($tables_row['count']);
+                        }
+                        
+                        // Views
+                        $views_result = $conn->query("SELECT COUNT(*) as count FROM information_schema.views WHERE table_schema = '" . $conn->real_escape_string($database) . "'");
+                        if ($views_result) {
+                            $views_row = $views_result->fetch_assoc();
+                            $stats['views'] = intval($views_row['count']);
+                        }
+                        
+                        // Stored Procedures
+                        $sps_result = $conn->query("SELECT COUNT(*) as count FROM information_schema.routines WHERE routine_schema = '" . $conn->real_escape_string($database) . "' AND routine_type = 'PROCEDURE'");
+                        if ($sps_result) {
+                            $sps_row = $sps_result->fetch_assoc();
+                            $stats['sps'] = intval($sps_row['count']);
+                        }
+                    }
+                } elseif ($connector == 'clickhouse') {
+                    // ClickHouse
+                    $database = !empty($row['Schema']) ? $row['Schema'] : (!empty($row['ServiceName']) ? $row['ServiceName'] : 'default');
+                    
+                    require_once('models/class_connclickhouse.php');
+                    
+                    // Tablas
+                    $tables_query = "SELECT count() as count FROM system.tables WHERE database = '" . addslashes($database) . "' AND engine NOT LIKE '%View%'";
+                    $tables_result = class_clickhouse_query($conn, $tables_query, 'JSON', $error_info);
+                    if ($tables_result !== false) {
+                        // ClickHouse puede retornar directamente un array o con estructura {data: [...]}
+                        if (isset($tables_result['data']) && !empty($tables_result['data'])) {
+                            $stats['tables'] = intval($tables_result['data'][0]['count'] ?? 0);
+                        } elseif (is_array($tables_result) && !empty($tables_result) && isset($tables_result[0]['count'])) {
+                            $stats['tables'] = intval($tables_result[0]['count']);
+                        }
+                    }
+                    
+                    // Views (ClickHouse tiene views)
+                    $views_query = "SELECT count() as count FROM system.tables WHERE database = '" . addslashes($database) . "' AND engine LIKE '%View%'";
+                    $views_result = class_clickhouse_query($conn, $views_query, 'JSON', $error_info);
+                    if ($views_result !== false) {
+                        // ClickHouse puede retornar directamente un array o con estructura {data: [...]}
+                        if (isset($views_result['data']) && !empty($views_result['data'])) {
+                            $stats['views'] = intval($views_result['data'][0]['count'] ?? 0);
+                        } elseif (is_array($views_result) && !empty($views_result) && isset($views_result[0]['count'])) {
+                            $stats['views'] = intval($views_result[0]['count']);
+                        }
+                    }
+                    
+                    // ClickHouse no tiene stored procedures tradicionales
+                    $stats['sps'] = 0;
+                } elseif ($connector == 'sqlserver' || $connector == 'mssql') {
+                    // SQL Server
+                    $database = !empty($row['Schema']) ? $row['Schema'] : (!empty($row['ServiceName']) ? $row['ServiceName'] : '');
+                    if ($database && $conn instanceof PDO) {
+                        // Tablas
+                        $tables_result = $conn->query("SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_CATALOG = '" . str_replace("'", "''", $database) . "'");
+                        if ($tables_result) {
+                            $tables_row = $tables_result->fetch(PDO::FETCH_ASSOC);
+                            $stats['tables'] = intval($tables_row['count'] ?? 0);
+                        }
+                        
+                        // Views
+                        $views_result = $conn->query("SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_CATALOG = '" . str_replace("'", "''", $database) . "'");
+                        if ($views_result) {
+                            $views_row = $views_result->fetch(PDO::FETCH_ASSOC);
+                            $stats['views'] = intval($views_row['count'] ?? 0);
+                        }
+                        
+                        // Stored Procedures
+                        $sps_result = $conn->query("SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'PROCEDURE' AND ROUTINE_CATALOG = '" . str_replace("'", "''", $database) . "'");
+                        if ($sps_result) {
+                            $sps_row = $sps_result->fetch(PDO::FETCH_ASSOC);
+                            $stats['sps'] = intval($sps_row['count'] ?? 0);
+                        }
+                    }
+                }
+            } else {
+                $stats['error'] = 'No se pudo establecer la conexión';
+            }
+        }
+    } catch (Exception $e) {
+        $stats['error'] = $e->getMessage();
+    }
+    
+    ob_clean();
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($stats, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 // Endpoint AJAX para probar conexión - DEBE ir ANTES de header.php para evitar output
 if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_GET['id'])) {
     // Iniciar buffer de salida para capturar cualquier output no deseado
@@ -27,32 +150,134 @@ if (isset($_GET['action']) && $_GET['action'] === 'test_connection' && isset($_G
         return true;
     });
     
-    // Intentar conectar
-    $conn = class_Connections($test_id);
-    $success = ($conn !== null && $conn !== false);
+    // Obtener información de la conexión primero
+    global $conn_phoenix;
+    $conn_info = null;
+    if (isset($conn_phoenix) && $conn_phoenix instanceof mysqli) {
+        $result = $conn_phoenix->query("SELECT Connector, Hostname, Port, Username, Password, `Schema`, ServiceName FROM connections WHERE ConnectionId = $test_id");
+        if ($result && $row = $result->fetch_assoc()) {
+            $conn_info = $row;
+        }
+    }
     
-    // Si falló, obtener el mensaje de error más detallado
-    if (!$success) {
+    // Intentar conectar usando class_Connections
+    $conn = class_Connections($test_id);
+    
+    // Verificar la conexión haciendo una prueba real
+    $success = false;
+    if ($conn !== null && $conn !== false) {
+        // Hacer una prueba real según el tipo de conexión
+        if (is_object($conn)) {
+            if (isset($conn->type) && $conn->type === 'clickhouse') {
+                // Para ClickHouse, probar con una consulta simple
+                require_once('models/class_connclickhouse.php');
+                $test_result = class_clickhouse_query($conn, "SELECT 1", 'JSON', $test_error);
+                $success = ($test_result !== false);
+                if (!$success && $test_error) {
+                    $error_message = "ClickHouse: " . $test_error;
+                }
+            } elseif ($conn instanceof mysqli) {
+                // Para MySQL, probar con una consulta simple
+                $test_result = $conn->query("SELECT 1");
+                $success = ($test_result !== false);
+                if (!$success) {
+                    $error_message = "MySQL: " . $conn->error;
+                }
+            } elseif ($conn instanceof PDO) {
+                // Para PDO (SQL Server, etc.), probar con una consulta simple
+                try {
+                    $test_result = $conn->query("SELECT 1");
+                    $success = ($test_result !== false);
+                    if (!$success) {
+                        $error_info = $conn->errorInfo();
+                        $error_message = "SQL Server: " . ($error_info[2] ?? 'Error desconocido');
+                    }
+                } catch (PDOException $e) {
+                    $success = false;
+                    $error_message = "SQL Server: " . $e->getMessage();
+                }
+            } else {
+                // Otro tipo de conexión, asumir que funciona si no es null
+                $success = true;
+            }
+        } else {
+            // Si es un recurso u otro tipo, asumir que funciona
+            $success = true;
+        }
+    }
+    
+    // Si class_Connections falló pero tenemos info de la conexión, intentar conexión directa
+    if (!$success && $conn_info) {
+        $hostname = trim($conn_info['Hostname'] ?: 'localhost');
+        $port = trim($conn_info['Port'] ?: '');
+        $username = trim($conn_info['Username'] ?: '');
+        $password = $conn_info['Password'] ?: '';
+        $database = trim($conn_info['Schema'] ?: ($conn_info['ServiceName'] ?: ''));
+        $connector = strtolower(trim($conn_info['Connector']));
+        
+        if ($connector == 'mysqli' || $connector == 'mysqlissl' || $connector == 'mysql' || $connector == 'mariadb') {
+            require_once('models/class_connmysqli.php');
+            if (empty($port)) $port = '3306';
+            
+            // Si no hay database, intentar conectar sin especificar base de datos (solo para probar)
+            if (empty($database)) {
+                $test_conn = @new mysqli($hostname, $username, $password, '', intval($port));
+            } else {
+                $test_conn = class_connMysqli($hostname, $port, $username, $password, $database);
+            }
+            
+            if ($test_conn && !$test_conn->connect_error) {
+                // Probar con una consulta simple
+                $test_result = $test_conn->query("SELECT 1");
+                if ($test_result !== false) {
+                    $success = true;
+                    $error_message = ''; // Limpiar el error si la conexión funciona
+                } else {
+                    $error_message = "MySQL: " . $test_conn->error;
+                }
+                @$test_conn->close();
+            } elseif ($test_conn && $test_conn->connect_error) {
+                $error_message = "MySQL Connect Error: " . $test_conn->connect_error;
+            }
+        } elseif ($connector == 'sqlserver' || $connector == 'mssql') {
+            require_once('models/class_connsqlserver.php');
+            if (empty($port)) $port = '1433';
+            
+            if (!empty($database)) {
+                $test_conn = class_connSqlServer($hostname, $port, $username, $password, $database);
+                if ($test_conn && $test_conn instanceof PDO) {
+                    try {
+                        $test_result = $test_conn->query("SELECT 1");
+                        if ($test_result !== false) {
+                            $success = true;
+                            $error_message = '';
+                        }
+                    } catch (PDOException $e) {
+                        $error_message = "SQL Server: " . $e->getMessage();
+                    }
+                } else {
+                    $error_message = "SQL Server: No se pudo establecer la conexión";
+                }
+            } else {
+                $error_message = "SQL Server: Base de datos no especificada";
+            }
+        }
+    }
+    
+    // Si aún falló, obtener el mensaje de error más detallado
+    if (!$success && empty($error_message)) {
         // Verificar si hay mensajes de error en GLOBALS
         if (isset($GLOBALS['phoenix_errors_warnings']) && !empty($GLOBALS['phoenix_errors_warnings'])) {
             $last_error = end($GLOBALS['phoenix_errors_warnings']);
             $error_message = isset($last_error['message']) ? $last_error['message'] : 'Error desconocido';
-        } else if (empty($error_message)) {
-            // Intentar obtener información de la conexión para ver qué falló
-            global $conn_phoenix;
-            if (isset($conn_phoenix) && $conn_phoenix instanceof mysqli) {
-                $result = $conn_phoenix->query("SELECT Title, Connector, Hostname, Port, Username FROM connections WHERE ConnectionId = $test_id");
-                if ($result && $row = $result->fetch_assoc()) {
-                    $error_message = "No se pudo establecer conexión. Verifique: Hostname: " . ($row['Hostname'] ?: 'vacío') . 
-                                    ", Puerto: " . ($row['Port'] ?: 'vacío') . 
-                                    ", Usuario: " . ($row['Username'] ?: 'vacío') . 
-                                    ", Connector: " . ($row['Connector'] ?: 'N/A');
-                } else {
-                    $error_message = "Error al establecer conexión. Verifique la configuración.";
-                }
-            } else {
-                $error_message = "Error: No se pudo conectar a la base de datos Phoenix para verificar la configuración.";
-            }
+        } else if ($conn_info) {
+            $error_message = "No se pudo establecer conexión. Verifique: Hostname: " . ($conn_info['Hostname'] ?: 'vacío') . 
+                            ", Puerto: " . ($conn_info['Port'] ?: 'vacío') . 
+                            ", Usuario: " . ($conn_info['Username'] ?: 'vacío') . 
+                            ", Schema: " . ($conn_info['Schema'] ?: 'vacío') .
+                            ", Connector: " . ($conn_info['Connector'] ?: 'N/A');
+        } else {
+            $error_message = "Error: No se pudo obtener información de la conexión.";
         }
     }
     
@@ -259,6 +484,7 @@ if ($result) {
               <select class="form-select" name="connector">
                 <option value="mysqli" <?php echo (!$edit_data || $edit_data['Connector'] == 'mysqli') ? 'selected' : ''; ?>>MySQLi</option>
                 <option value="mysqlissl" <?php echo ($edit_data && $edit_data['Connector'] == 'mysqlissl') ? 'selected' : ''; ?>>MySQLi con SSL</option>
+                <option value="sqlserver" <?php echo ($edit_data && ($edit_data['Connector'] == 'sqlserver' || $edit_data['Connector'] == 'mssql')) ? 'selected' : ''; ?>>SQL Server</option>
                 <option value="oci" <?php echo ($edit_data && $edit_data['Connector'] == 'oci') ? 'selected' : ''; ?>>Oracle (OCI)</option>
                 <option value="pdo" <?php echo ($edit_data && $edit_data['Connector'] == 'pdo') ? 'selected' : ''; ?>>PDO</option>
                 <option value="clickhouse" <?php echo ($edit_data && $edit_data['Connector'] == 'clickhouse') ? 'selected' : ''; ?>>ClickHouse</option>
@@ -330,6 +556,9 @@ if ($result) {
                 <th>Puerto</th>
                 <th>Usuario</th>
                 <th>Schema</th>
+                <th>Tablas</th>
+                <th>Views</th>
+                <th>SPs</th>
                 <th>Conexión</th>
                 <th>Estado</th>
                 <th>Acciones</th>
@@ -338,7 +567,7 @@ if ($result) {
             <tbody>
               <?php if (empty($connections)): ?>
               <tr>
-                <td colspan="10" class="text-center text-muted">
+                <td colspan="13" class="text-center text-muted">
                   No hay conexiones registradas
                 </td>
               </tr>
@@ -352,6 +581,21 @@ if ($result) {
                 <td><?php echo htmlspecialchars($conn['Port'] ?? 'N/A'); ?></td>
                 <td><?php echo htmlspecialchars($conn['Username'] ?? 'N/A'); ?></td>
                 <td><?php echo htmlspecialchars($conn['Schema'] ?? 'N/A'); ?></td>
+                <td>
+                  <span class="connection-stats-tables" data-connection-id="<?php echo $conn['ConnectionId']; ?>" title="Cargando...">
+                    <span class="spinner-border spinner-border-sm text-secondary" style="width: 12px; height: 12px;" role="status"></span>
+                  </span>
+                </td>
+                <td>
+                  <span class="connection-stats-views" data-connection-id="<?php echo $conn['ConnectionId']; ?>" title="Cargando...">
+                    <span class="spinner-border spinner-border-sm text-secondary" style="width: 12px; height: 12px;" role="status"></span>
+                  </span>
+                </td>
+                <td>
+                  <span class="connection-stats-sps" data-connection-id="<?php echo $conn['ConnectionId']; ?>" title="Cargando...">
+                    <span class="spinner-border spinner-border-sm text-secondary" style="width: 12px; height: 12px;" role="status"></span>
+                  </span>
+                </td>
                 <td>
                   <div class="connection-status-wrapper" style="position: relative; display: inline-block;">
                     <span class="connection-status" data-connection-id="<?php echo $conn['ConnectionId']; ?>" title="Probando conexión...">
@@ -402,6 +646,60 @@ if ($result) {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Cargar estadísticas de todas las conexiones
+    const statsElements = document.querySelectorAll('.connection-stats-tables, .connection-stats-views, .connection-stats-sps');
+    const connectionIds = new Set();
+    statsElements.forEach(function(el) {
+        connectionIds.add(el.getAttribute('data-connection-id'));
+    });
+    
+    // Cargar estadísticas para cada conexión
+    connectionIds.forEach(function(connectionId) {
+        fetch('connections_config.php?action=get_connection_stats&id=' + connectionId)
+            .then(response => response.json())
+            .then(data => {
+                // Actualizar tablas
+                const tablesEl = document.querySelector('.connection-stats-tables[data-connection-id="' + connectionId + '"]');
+                if (tablesEl) {
+                    if (data.error) {
+                        tablesEl.innerHTML = '<span class="text-muted" title="Error: ' + data.error + '">-</span>';
+                    } else {
+                        tablesEl.innerHTML = '<span class="badge bg-info" title="Tablas">' + data.tables + '</span>';
+                    }
+                }
+                
+                // Actualizar views
+                const viewsEl = document.querySelector('.connection-stats-views[data-connection-id="' + connectionId + '"]');
+                if (viewsEl) {
+                    if (data.error) {
+                        viewsEl.innerHTML = '<span class="text-muted" title="Error: ' + data.error + '">-</span>';
+                    } else {
+                        viewsEl.innerHTML = '<span class="badge bg-secondary" title="Views">' + data.views + '</span>';
+                    }
+                }
+                
+                // Actualizar SPs
+                const spsEl = document.querySelector('.connection-stats-sps[data-connection-id="' + connectionId + '"]');
+                if (spsEl) {
+                    if (data.error) {
+                        spsEl.innerHTML = '<span class="text-muted" title="Error: ' + data.error + '">-</span>';
+                    } else {
+                        spsEl.innerHTML = '<span class="badge bg-warning text-dark" title="Stored Procedures">' + data.sps + '</span>';
+                    }
+                }
+            })
+            .catch(error => {
+                // Error en la petición
+                const tablesEl = document.querySelector('.connection-stats-tables[data-connection-id="' + connectionId + '"]');
+                const viewsEl = document.querySelector('.connection-stats-views[data-connection-id="' + connectionId + '"]');
+                const spsEl = document.querySelector('.connection-stats-sps[data-connection-id="' + connectionId + '"]');
+                
+                if (tablesEl) tablesEl.innerHTML = '<span class="text-muted" title="Error al cargar">-</span>';
+                if (viewsEl) viewsEl.innerHTML = '<span class="text-muted" title="Error al cargar">-</span>';
+                if (spsEl) spsEl.innerHTML = '<span class="text-muted" title="Error al cargar">-</span>';
+            });
+    });
+    
     // Probar todas las conexiones al cargar la página
     const connectionStatuses = document.querySelectorAll('.connection-status');
     

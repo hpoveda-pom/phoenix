@@ -59,6 +59,11 @@ function class_Recordset($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $star
 		case 'clickhouse':
 			$results = class_queryClickHouse($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
 			break;
+		case 'sqlserver':
+		case 'mssql':
+			require_once('class_querysqlserver.php');
+			$results = class_querySqlServer($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
+			break;
 		default:
 			// Por defecto intentar con MySQLi
 			$results = class_queryMysqli($ConnectionId, $Query, $Filter, $GroupBy, $Limit, $start, $length, $SumBy);
