@@ -674,9 +674,14 @@ if ($action === 'edit' && $id > 0) {
     }
 }
 
-// Obtener lista de conexiones
+// Obtener lista de conexiones con conteo de reportes
 $connections = [];
-$result = $conn_phoenix->query("SELECT * FROM connections ORDER BY Title ASC");
+$result = $conn_phoenix->query("
+    SELECT c.*, 
+           COALESCE((SELECT COUNT(*) FROM reports r WHERE r.ConnectionId = c.ConnectionId), 0) as reports_count
+    FROM connections c
+    ORDER BY c.Title ASC
+");
 if ($result) {
     while ($row = $result->fetch_assoc()) {
         $connections[] = $row;
@@ -809,10 +814,8 @@ if ($categories_result) {
                 <th>ID</th>
                 <th>Título</th>
                 <th>Connector</th>
-                <th>Hostname</th>
-                <th>Puerto</th>
-                <th>Usuario</th>
                 <th>Schema</th>
+                <th>Reportes</th>
                 <th>Tablas</th>
                 <th>Views</th>
                 <th>SPs</th>
@@ -825,7 +828,7 @@ if ($categories_result) {
             <tbody>
               <?php if (empty($connections)): ?>
               <tr>
-                <td colspan="14" class="text-center text-muted">
+                <td colspan="12" class="text-center text-muted">
                   No hay conexiones registradas
                 </td>
               </tr>
@@ -835,10 +838,10 @@ if ($categories_result) {
                 <td><?php echo $conn['ConnectionId']; ?></td>
                 <td><?php echo htmlspecialchars($conn['Title']); ?></td>
                 <td><?php echo htmlspecialchars($conn['Connector'] ?? 'N/A'); ?></td>
-                <td><?php echo htmlspecialchars($conn['Hostname'] ?? 'N/A'); ?></td>
-                <td><?php echo htmlspecialchars($conn['Port'] ?? 'N/A'); ?></td>
-                <td><?php echo htmlspecialchars($conn['Username'] ?? 'N/A'); ?></td>
                 <td><?php echo htmlspecialchars($conn['Schema'] ?? 'N/A'); ?></td>
+                <td>
+                  <span class="badge bg-primary"><?php echo intval($conn['reports_count'] ?? 0); ?></span>
+                </td>
                 <td>
                   <span class="connection-stats-tables" data-connection-id="<?php echo $conn['ConnectionId']; ?>" title="Cargando..." style="cursor: pointer;">
                     <span class="spinner-border spinner-border-sm text-secondary" style="width: 12px; height: 12px;" role="status"></span>
@@ -1208,7 +1211,7 @@ if (typeof jQuery !== 'undefined') {
             "dom": '<"row mb-3"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6"f>>rtip',
             "columnDefs": [
                 {
-                    "targets": [7, 8, 9, 10, 11, 13], // Columnas de estadísticas, conexión, ping y acciones
+                    "targets": [4, 5, 6, 7, 8, 9, 11], // Columnas de reportes, estadísticas, conexión, ping y acciones
                     "orderable": false,
                     "searchable": false
                 }
