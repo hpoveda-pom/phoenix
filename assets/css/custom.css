@@ -67,6 +67,56 @@ body[data-bs-theme="dark"] .g-recaptcha iframe {
   }
 }
 
+/* Estilos para el item activo del menú - fondo sólido oscuro como en la imagen */
+.navbar-vertical .navbar-nav .nav-link.active,
+.navbar-vertical .navbar-nav .nav .nav-link.active,
+.navbar-vertical .navbar-nav .nav .nav .nav-link.active,
+.navbar-vertical .navbar-nav .nav .nav .nav .nav-link.active {
+  background-color: #2c3e50 !important;
+  background: #2c3e50 !important;
+  border-left: 3px solid #0d6efd !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+  position: relative;
+  color: #ffffff !important;
+  border-radius: 6px !important;
+  margin: 2px 8px 2px 4px !important;
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+
+/* Modo oscuro - fondo azul-gris oscuro más visible */
+[data-bs-theme="dark"] .navbar-vertical .navbar-nav .nav-link.active,
+[data-bs-theme="dark"] .navbar-vertical .navbar-nav .nav .nav-link.active,
+[data-bs-theme="dark"] .navbar-vertical .navbar-nav .nav .nav .nav-link.active,
+[data-bs-theme="dark"] .navbar-vertical .navbar-nav .nav .nav .nav .nav-link.active {
+  background-color: #1e3a5f !important;
+  background: #1e3a5f !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 0 20px rgba(13, 110, 253, 0.1) !important;
+  color: #ffffff !important;
+  border-left-color: #5d9eff !important;
+}
+
+/* Asegurar que el hover no sobrescriba el estilo activo */
+.navbar-vertical .navbar-nav .nav-link.active:hover,
+.navbar-vertical .navbar-nav .nav .nav-link.active:hover,
+.navbar-vertical .navbar-nav .nav .nav .nav-link.active:hover,
+.navbar-vertical .navbar-nav .nav .nav .nav .nav-link.active:hover {
+  background-color: #34495e !important;
+  background: #34495e !important;
+  border-left-color: #0d6efd !important;
+  color: #ffffff !important;
+}
+
+[data-bs-theme="dark"] .navbar-vertical .navbar-nav .nav-link.active:hover,
+[data-bs-theme="dark"] .navbar-vertical .navbar-nav .nav .nav-link.active:hover,
+[data-bs-theme="dark"] .navbar-vertical .navbar-nav .nav .nav .nav-link.active:hover,
+[data-bs-theme="dark"] .navbar-vertical .navbar-nav .nav .nav .nav .nav-link.active:hover {
+  background-color: #2a4a6f !important;
+  background: #2a4a6f !important;
+  color: #ffffff !important;
+}
+
 /* DataTable: Solo hacer scroll horizontal cuando realmente sea necesario */
 #tableExample .table-responsive {
   overflow-x: auto;

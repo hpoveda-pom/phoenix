@@ -51,11 +51,6 @@ if ($Id) {
             // Generar un ID único para cada categoría
       $categoryId = "nv-ECharts-" . $row_category['CategoryId'];
 
-      $collapse_show = null;
-      if (isset($row_category['CategoryId']) && isset($row_reports_info['CategoryId']) && $row_category['CategoryId'] == $row_reports_info['CategoryId']) {
-        $collapse_show = "show";
-      }
-
         //SubCategory Recordset
         $array_subcategory = [];
         $query_subcategory = "
@@ -75,11 +70,31 @@ if ($Id) {
           }
         }
 
+      // Verificar si el reporte actual pertenece a esta categoría o a alguna de sus subcategorías
+      $collapse_show = null;
+      $aria_expanded = "false";
+      if ($Id && isset($row_reports_info['CategoryId'])) {
+        // Verificar si el reporte está directamente en esta categoría
+        if ($row_category['CategoryId'] == $row_reports_info['CategoryId']) {
+          $collapse_show = "show";
+          $aria_expanded = "true";
+        } else {
+          // Verificar si el reporte está en alguna subcategoría de esta categoría
+          foreach ($array_subcategory as $subcat) {
+            if ($subcat['CategoryId'] == $row_reports_info['CategoryId']) {
+              $collapse_show = "show";
+              $aria_expanded = "true";
+              break;
+            }
+          }
+        }
+      }
+
         //echo "<pre>";print_r($array_subcategory);
       ?>
       <!-- Reportes operativos -->
       <div class="nav-item-wrapper">
-        <a class="nav-link dropdown-indicator reports-<?php echo $row_category['CategoryId']; ?>" href="#reports-<?php echo $categoryId; ?>" role="button" data-bs-toggle="collapse" aria-expanded="false" aria-controls="reports-<?php echo $categoryId; ?>">
+        <a class="nav-link dropdown-indicator reports-<?php echo $row_category['CategoryId']; ?>" href="#reports-<?php echo $categoryId; ?>" role="button" data-bs-toggle="collapse" aria-expanded="<?php echo $aria_expanded; ?>" aria-controls="reports-<?php echo $categoryId; ?>">
           <div class="d-flex align-items-center">
             <div class="dropdown-indicator-icon">
               <svg class="svg-inline--fa fa-caret-right" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="caret-right" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 512" data-fa-i2svg="">
@@ -105,12 +120,14 @@ if ($Id) {
                       <?php foreach ($array_subcategory as $key_subcategory => $row_subcategory) { ?>
                       <?php 
                       $subcategory_collapse_show = null;
-                        if (isset($row_subcategory['CategoryId']) && isset($row_reports_info['CategoryId']) && $row_subcategory['CategoryId'] == $row_reports_info['CategoryId']) {
+                      $subcategory_aria_expanded = "false";
+                        if ($Id && isset($row_subcategory['CategoryId']) && isset($row_reports_info['CategoryId']) && $row_subcategory['CategoryId'] == $row_reports_info['CategoryId']) {
                           $subcategory_collapse_show = "show";
+                          $subcategory_aria_expanded = "true";
                         }
                       ?>
                       <li class="nav-item">
-                        <a class="nav-link dropdown-indicator" href="#nv-reports-<?php echo $row_subcategory['CategoryId']; ?>" data-bs-toggle="collapse" aria-expanded="true" aria-controls="nv-reports-<?php echo $row_subcategory['CategoryId']; ?>">
+                        <a class="nav-link dropdown-indicator" href="#nv-reports-<?php echo $row_subcategory['CategoryId']; ?>" data-bs-toggle="collapse" aria-expanded="<?php echo $subcategory_aria_expanded; ?>" aria-controls="nv-reports-<?php echo $row_subcategory['CategoryId']; ?>">
                           <div class="d-flex align-items-center">
                             <div class="dropdown-indicator-icon-wrapper"><svg class="svg-inline--fa fa-caret-right dropdown-indicator-icon" aria-hidden="true" focusable="false" data-prefix="fas" data-icon="caret-right" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 512" data-fa-i2svg=""><path fill="currentColor" d="M246.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-128-128c-9.2-9.2-22.9-11.9-34.9-6.9s-19.8 16.6-19.8 29.6l0 256c0 12.9 7.8 24.6 19.8 29.6s25.7 2.2 34.9-6.9l128-128z"></path></svg><!-- <span class="fas fa-caret-right dropdown-indicator-icon"></span> Font Awesome fontawesome.com --></div>
                             <span class="nav-link-text"><?php echo $row_subcategory['Title']; ?></span>
