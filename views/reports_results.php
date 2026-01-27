@@ -23,6 +23,8 @@ if ($action == "update" && $form_id == 'editor_query') {
   header("Location: $lastURL");
   exit();
 }
+//echo "<pre>";print_r($array_reports['data']);exit;
+
 ?>
 <div class="card pt-1 pb-4">
     <div class="tab-content" id="myTabContent">
@@ -179,6 +181,106 @@ if ($action == "update" && $form_id == 'editor_query') {
           </div>
         </div>
         <?php } ?>
+        <!-- DEBUG Accordion -->
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="headingDebug">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDebug" aria-expanded="false" aria-controls="collapseDebug">
+              DEBUG
+            </button>
+          </h2>
+          <div class="accordion-collapse collapse" id="collapseDebug" aria-labelledby="headingDebug" data-bs-parent="#accordionExample">
+            <div class="accordion-body pt-0">
+              <div class="container mt-3 p-0">
+                <div class="card g-3 pt-2 pb-1 w-100">
+                  <div class="card-header">
+                    Subquery SQL Ejecutado
+                  </div>
+                  <div class="card-body p-0">
+                    <?php 
+                    // Obtener la consulta de debug si está disponible
+                    $debug_query = null;
+                    $debug_query_with_where = null;
+                    $debug_filters = [];
+                    
+                    // Debug: verificar qué contiene array_reports
+                    // var_dump(array_keys($array_reports ?? [])); // Descomentar para debug
+                    
+                    if (isset($array_reports['debug_query']) && !empty($array_reports['debug_query'])) {
+                      $debug_query = $array_reports['debug_query'];
+                    }
+                    if (isset($array_reports['debug_query_with_where']) && !empty($array_reports['debug_query_with_where'])) {
+                      $debug_query_with_where = $array_reports['debug_query_with_where'];
+                    }
+                    if (isset($array_reports['debug_filters']) && is_array($array_reports['debug_filters']) && !empty($array_reports['debug_filters'])) {
+                      $debug_filters = $array_reports['debug_filters'];
+                    }
+                    ?>
+                    
+                    <?php if ($Query): ?>
+                    <div class="p-3">
+                      <h6 class="mb-2"><strong>1. Query Original (sin filtros):</strong></h6>
+                      <pre class="bg-light p-3 border rounded" style="max-height: 200px; overflow-y: auto; font-size: 11px; white-space: pre-wrap; word-wrap: break-word;"><code><?php echo htmlspecialchars($Query); ?></code></pre>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <?php if ($debug_query_with_where): ?>
+                    <div class="p-3 border-top">
+                      <h6 class="mb-2"><strong>2. Subquery con Filtros Aplicados (query_with_where):</strong></h6>
+                      <p class="text-muted small mb-2">Esta es la subconsulta que se inserta dentro del SELECT tb.* FROM (...)</p>
+                      <pre class="bg-light p-3 border rounded" style="max-height: 300px; overflow-y: auto; font-size: 11px; white-space: pre-wrap; word-wrap: break-word;"><code><?php echo htmlspecialchars($debug_query_with_where); ?></code></pre>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <?php if ($debug_query): ?>
+                    <div class="p-3 border-top">
+                      <h6 class="mb-2"><strong>3. Query Final Completo Ejecutado (nivel superior):</strong></h6>
+                      <p class="text-muted small mb-2">Esta es la query completa que se ejecuta, incluyendo el SELECT tb.* FROM (subquery) AS tb</p>
+                      <pre class="bg-primary bg-opacity-10 p-3 border border-primary rounded" style="max-height: 400px; overflow-y: auto; font-size: 11px; white-space: pre-wrap; word-wrap: break-word;"><code><?php echo htmlspecialchars($debug_query); ?></code></pre>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <?php if (isset($filter_results) && !empty($filter_results)): ?>
+                    <div class="p-3 border-top">
+                      <h6 class="mb-2">Filtros Aplicados (filter_results):</h6>
+                      <pre class="bg-light p-3 border rounded" style="max-height: 200px; overflow-y: auto; font-size: 11px; white-space: pre-wrap; word-wrap: break-word;"><code><?php echo htmlspecialchars(print_r($filter_results, true)); ?></code></pre>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <?php if (!empty($debug_filters)): ?>
+                    <div class="p-3 border-top">
+                      <h6 class="mb-2">Información de Debug de Filtros:</h6>
+                      <ul class="list-group">
+                        <?php foreach ($debug_filters as $debug_msg): ?>
+                        <li class="list-group-item" style="font-size: 11px;"><?php echo htmlspecialchars($debug_msg); ?></li>
+                        <?php endforeach; ?>
+                      </ul>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <?php if (!$debug_query && !$debug_query_with_where): ?>
+                    <div class="p-3 border-top">
+                      <h6 class="mb-2"><strong>Diagnóstico:</strong></h6>
+                      <div class="alert alert-warning">
+                        <p class="mb-1"><strong>Las variables de debug no están disponibles.</strong></p>
+                        <p class="mb-0 small">
+                          <?php if (isset($array_reports)): ?>
+                            Variables disponibles en array_reports: <?php echo implode(', ', array_keys($array_reports)); ?><br>
+                            ¿Tiene debug_query? <?php echo isset($array_reports['debug_query']) ? 'Sí' : 'No'; ?><br>
+                            ¿Tiene debug_query_with_where? <?php echo isset($array_reports['debug_query_with_where']) ? 'Sí' : 'No'; ?><br>
+                            ¿Tiene debug_filters? <?php echo isset($array_reports['debug_filters']) ? 'Sí' : 'No'; ?>
+                          <?php else: ?>
+                            array_reports no está definido.
+                          <?php endif; ?>
+                        </p>
+                      </div>
+                    </div>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     <?php } ?>
     </div>

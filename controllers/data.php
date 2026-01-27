@@ -96,25 +96,72 @@ if (isset($_GET['filter_selected'])) {
   }
 }
 
-$array_filters = $filter_selected;
+// Convertir filter_selected del formato procesado (key, operator, value) al formato original (filter, operator)
+// si viene desde DataTables
+$array_filters = array();
+if (!empty($filter_selected) && is_array($filter_selected)) {
+  // Verificar si viene en formato procesado (desde DataTables) o formato original
+  $first_item = reset($filter_selected);
+  if (is_array($first_item) && isset($first_item['key']) && isset($first_item['operator']) && isset($first_item['value'])) {
+    // Es formato procesado (desde DataTables), convertir al formato original
+    $grouped_filters = array();
+    foreach ($filter_selected as $filter_item) {
+      if (isset($filter_item['key']) && isset($filter_item['operator']) && isset($filter_item['value'])) {
+        $key = $filter_item['key'];
+        if (!isset($grouped_filters[$key])) {
+          $grouped_filters[$key] = array();
+        }
+        $grouped_filters[$key][] = array(
+          'operator' => $filter_item['operator'],
+          'value' => $filter_item['value']
+        );
+      }
+    }
+    // Convertir a formato original
+    foreach ($grouped_filters as $key => $filters) {
+      foreach ($filters as $filter) {
+        $array_filters[] = array(
+          'filter' => array($key => $filter['value']),
+          'operator' => $filter['operator']
+        );
+      }
+    }
+  } else {
+    // Es formato original, usar directamente
+    $array_filters = $filter_selected;
+  }
+}
+
+// Procesar Filter de la URL (igual que en reports.php)
 if (is_array($Filter)) {
   // Manejar arrays indexados numéricamente: Filter[0][field], Filter[1][field], etc.
   if (isset($Filter[0]) && is_array($Filter[0])) {
     // Es un array indexado: Filter[0][field], Filter[1][field], etc.
     foreach ($Filter as $filter_index => $filter_item) {
-      if (is_array($filter_item) && isset($filter_item['field']) && !empty($filter_item['field'])) {
-        $array_filters[] = array(
-          'filter' => array($filter_item['field'] => isset($filter_item['keyword']) ? $filter_item['keyword'] : ''),
-          'operator' => isset($filter_item['operator']) ? $filter_item['operator'] : '='
-        );
+      if (is_array($filter_item) && isset($filter_item['field']) && !empty(trim($filter_item['field']))) {
+        $filter_keyword = isset($filter_item['keyword']) ? trim($filter_item['keyword']) : '';
+        // Solo agregar el filtro si el keyword no está vacío (excepto para operadores como 'is null')
+        if (!empty($filter_keyword) || (isset($filter_item['operator']) && in_array(strtolower($filter_item['operator']), ['is null', 'is not null']))) {
+          $array_filters[] = array(
+            'filter' => array($filter_item['field'] => $filter_keyword),
+            'operator' => isset($filter_item['operator']) && !empty($filter_item['operator']) ? $filter_item['operator'] : '='
+          );
+        }
       }
     }
-  } elseif (isset($Filter['field']) && !empty($Filter['field'])) {
+  } elseif (isset($Filter['field']) && !empty(trim($Filter['field']))) {
     // Formato antiguo: Filter[field] (sin índice numérico)
-    $array_filters[] = array(
-      'filter' => array($Filter['field'] => isset($Filter['keyword']) ? $Filter['keyword'] : ''),
-      'operator' => isset($Filter['operator']) ? $Filter['operator'] : '='
-    );
+    // Asegurarse de que el keyword también esté presente y no vacío (excepto para operadores especiales)
+    $filter_keyword = isset($Filter['keyword']) ? trim($Filter['keyword']) : '';
+    $filter_operator = isset($Filter['operator']) && !empty($Filter['operator']) ? $Filter['operator'] : '=';
+    
+    // Solo agregar el filtro si el keyword no está vacío (excepto para operadores como 'is null')
+    if (!empty($filter_keyword) || in_array(strtolower($filter_operator), ['is null', 'is not null'])) {
+      $array_filters[] = array(
+        'filter' => array($Filter['field'] => $filter_keyword),
+        'operator' => $filter_operator
+      );
+    }
   }
 }
 

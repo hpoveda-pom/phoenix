@@ -81,19 +81,30 @@ if (is_array($Filter)) {
   if (isset($Filter[0]) && is_array($Filter[0])) {
     // Es un array indexado: Filter[0][field], Filter[1][field], etc.
     foreach ($Filter as $filter_index => $filter_item) {
-      if (is_array($filter_item) && isset($filter_item['field']) && !empty($filter_item['field'])) {
-        $array_filters[] = array(
-          'filter' => array($filter_item['field'] => isset($filter_item['keyword']) ? $filter_item['keyword'] : ''),
-          'operator' => isset($filter_item['operator']) ? $filter_item['operator'] : '='
-        );
+      if (is_array($filter_item) && isset($filter_item['field']) && !empty(trim($filter_item['field']))) {
+        $filter_keyword = isset($filter_item['keyword']) ? trim($filter_item['keyword']) : '';
+        // Solo agregar el filtro si el keyword no está vacío (excepto para operadores como 'is null')
+        if (!empty($filter_keyword) || (isset($filter_item['operator']) && in_array(strtolower($filter_item['operator']), ['is null', 'is not null']))) {
+          $array_filters[] = array(
+            'filter' => array($filter_item['field'] => $filter_keyword),
+            'operator' => isset($filter_item['operator']) && !empty($filter_item['operator']) ? $filter_item['operator'] : '='
+          );
+        }
       }
     }
-  } elseif (isset($Filter['field']) && !empty($Filter['field'])) {
+  } elseif (isset($Filter['field']) && !empty(trim($Filter['field']))) {
     // Formato antiguo: Filter[field] (sin índice numérico)
-    $array_filters[] = array(
-      'filter' => array($Filter['field'] => isset($Filter['keyword']) ? $Filter['keyword'] : ''),
-      'operator' => isset($Filter['operator']) ? $Filter['operator'] : '='
-    );
+    // Asegurarse de que el keyword también esté presente y no vacío (excepto para operadores especiales)
+    $filter_keyword = isset($Filter['keyword']) ? trim($Filter['keyword']) : '';
+    $filter_operator = isset($Filter['operator']) && !empty($Filter['operator']) ? $Filter['operator'] : '=';
+    
+    // Solo agregar el filtro si el keyword no está vacío (excepto para operadores como 'is null')
+    if (!empty($filter_keyword) || in_array(strtolower($filter_operator), ['is null', 'is not null'])) {
+      $array_filters[] = array(
+        'filter' => array($Filter['field'] => $filter_keyword),
+        'operator' => $filter_operator
+      );
+    }
   }
 }
 
@@ -349,9 +360,14 @@ if (isset($row_reports_info['TypeId']) && $row_reports_info['TypeId']==1) {
   $query_execution_start = microtime(true);
   
   $array_headers  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], null, null, 1, null, null, $sumby_results);
-  
+
+
+
+
+  //resultados  
   $array_reports  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, $Limit, null, null, $sumby_results);
-  
+
+
   // Calcular tiempo de ejecución
   $query_execution_end = microtime(true);
   $query_execution_time = $query_execution_end - $query_execution_start;

@@ -209,12 +209,27 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
                     case 'BETWEEN':
                         $query_where .= "$key BETWEEN " . $filter['value'];
                         break;
+                    case 'like':
+                    case 'not like':
+                        // ClickHouse no permite LIKE en DateTime, convertir a String primero
+                        // Usar toString() para convertir DateTime a String
+                        $escaped_value = addslashes($filter['value']);
+                        $field_expr = "toString($key)";
+                        if (strtolower($filter['operator']) == 'not like') {
+                            $query_where .= "$field_expr NOT LIKE '" . $escaped_value . "'";
+                        } else {
+                            $query_where .= "$field_expr LIKE '" . $escaped_value . "'";
+                        }
+                        break;
                     case 'REGEXP_LIKE':
-                        // ClickHouse: usar match() para regex
-                        $query_where .= "match(" . $key . ", " . $filter['value'] . ")";
+                        // ClickHouse: usar match() para regex, convertir DateTime a String si es necesario
+                        $field_expr = "toString($key)";
+                        $query_where .= "match($field_expr, " . $filter['value'] . ")";
                         break;
                     case 'NOT REGEXP_LIKE':
-                        $query_where .= "NOT match(" . $key . ", " . $filter['value'] . ")";
+                        // ClickHouse: usar match() para regex, convertir DateTime a String si es necesario
+                        $field_expr = "toString($key)";
+                        $query_where .= "NOT match($field_expr, " . $filter['value'] . ")";
                         break;
                     default:
                         // Escapar comillas simples en el valor
@@ -241,12 +256,56 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
         $GLOBALS['debug_filters'][] = "ORDER BY recibido (ClickHouse): " . $OrderBy;
     }
     
-    // Construir la query: WHERE debe ir antes de ORDER BY, y ORDER BY antes de LIMIT
-    // Si no hay WHERE, no incluir la cláusula WHERE
-    $query = "SELECT tb.* FROM (" . $Query . ") AS tb";
+    // Construir la query: WHERE debe aplicarse dentro de la subconsulta, no en el nivel superior
+    // Insertar el WHERE dentro de la subconsulta antes del cierre del paréntesis
+    // Inicializar query_with_where con la consulta original
+    $query_with_where = $Query;
+    
     if (!empty($query_where)) {
-        $query .= " " . $query_where;
+        // Verificar si la consulta original ya tiene un WHERE
+        $query_upper = strtoupper(trim($Query));
+        $has_where = preg_match('/\bWHERE\b/i', $Query);
+        
+        if ($has_where) {
+            // Si ya tiene WHERE, combinar con AND
+            // Buscar el último WHERE y agregar el filtro después
+            $last_where_pos = strripos($query_upper, ' WHERE ');
+            if ($last_where_pos !== false) {
+                // Encontrar el final de la cláusula WHERE (antes de GROUP BY, ORDER BY, LIMIT, etc.)
+                $where_clause_end = strlen($Query);
+                $keywords = [' GROUP BY ', ' ORDER BY ', ' LIMIT ', ' HAVING '];
+                foreach ($keywords as $keyword) {
+                    $pos = stripos($Query, $keyword, $last_where_pos);
+                    if ($pos !== false && $pos < $where_clause_end) {
+                        $where_clause_end = $pos;
+                    }
+                }
+                
+                // Insertar el nuevo filtro con AND
+                $where_clause = substr($Query, $last_where_pos + 6, $where_clause_end - $last_where_pos - 6);
+                $new_where = $where_clause . " AND " . substr($query_where, 7); // Remover " WHERE " del inicio
+                $query_with_where = substr($Query, 0, $last_where_pos + 6) . $new_where . substr($Query, $where_clause_end);
+            } else {
+                // Si no se encuentra WHERE pero debería estar, agregarlo al final antes de GROUP BY, ORDER BY, etc.
+                $query_with_where = $Query . " AND " . substr($query_where, 7);
+            }
+        } else {
+            // Si no tiene WHERE, insertarlo antes de GROUP BY, ORDER BY, LIMIT, etc.
+            $insert_pos = strlen($Query);
+            $keywords = [' GROUP BY ', ' ORDER BY ', ' LIMIT ', ' HAVING '];
+            foreach ($keywords as $keyword) {
+                $pos = stripos($Query, $keyword);
+                if ($pos !== false && $pos < $insert_pos) {
+                    $insert_pos = $pos;
+                }
+            }
+            
+            // Insertar el WHERE en la posición encontrada
+            $query_with_where = substr($Query, 0, $insert_pos) . " " . $query_where . " " . substr($Query, $insert_pos);
+        }
     }
+    
+    $query = "SELECT tb.* FROM (" . $query_with_where . ") AS tb";
     if (!empty($query_order_by)) {
         $query .= $query_order_by;
     }
@@ -276,8 +335,8 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
         // Si hay OrderBy personalizado, usarlo; si no, usar el orden por defecto (Cantidad DESC)
         $groupby_order_by = !empty($OrderBy) ? " ORDER BY " . $OrderBy : " ORDER BY Cantidad DESC";
         
-        // Construir la query con GROUP BY: WHERE, GROUP BY, ORDER BY, LIMIT
-        $query = "SELECT " . $select_fields . " FROM (" . $Query . ") AS tb " . $query_where . " " . $GroupBy . $groupby_order_by;
+        // Construir la query con GROUP BY: usar query_with_where que ya tiene el WHERE dentro de la subconsulta
+        $query = "SELECT " . $select_fields . " FROM (" . $query_with_where . ") AS tb " . $GroupBy . $groupby_order_by;
         if (!empty($query_limit)) {
             $query .= " " . $query_limit;
         }
@@ -436,9 +495,11 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
         $select_GroupBy_clean = rtrim($select_GroupBy, ',');
         // Optimización: usar una subconsulta que permite a ClickHouse usar external aggregation
         // Esto evita cargar todos los datos en memoria antes de hacer el GROUP BY
-        $query_totalrows = "SELECT count(*) AS TOTAL_ROWS FROM (SELECT " . $select_GroupBy_clean . " FROM (" . $Query . ") AS tb " . $query_where . " " . $GroupBy . ") AS grouped";
+        // Usar query_with_where que ya tiene el WHERE dentro de la subconsulta
+        $query_totalrows = "SELECT count(*) AS TOTAL_ROWS FROM (SELECT " . $select_GroupBy_clean . " FROM (" . $query_with_where . ") AS tb " . $GroupBy . ") AS grouped";
     } else {
-        $query_totalrows = "SELECT count(*) AS TOTAL_ROWS FROM (" . $Query . ") AS tb " . $query_where;
+        // Usar query_with_where que ya tiene el WHERE dentro de la subconsulta
+        $query_totalrows = "SELECT count(*) AS TOTAL_ROWS FROM (" . $query_with_where . ") AS tb";
     }
     
     $GLOBALS['debug_filters'][] = "SQL COUNT (ClickHouse): " . $query_totalrows;
@@ -537,12 +598,23 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
         }
     }
 
-    // Return array with data, headers, info, and error message
+    // Guardar la query final para debug (después de que se haya construido completamente)
+    $final_query_for_debug = isset($query) ? $query : null;
+    
+    // Agregar la query final al debug de filtros si está disponible
+    if ($final_query_for_debug && isset($GLOBALS['debug_filters'])) {
+        $GLOBALS['debug_filters'][] = "QUERY FINAL COMPLETA: " . $final_query_for_debug;
+    }
+    
+    // Return array with data, headers, info, error message, and debug query
     return array(
         'info' => $info,
         'headers' => $headers,
         'data' => $data,
-        'error' => $msg_error
+        'error' => $msg_error,
+        'debug_query' => $final_query_for_debug,
+        'debug_query_with_where' => isset($query_with_where) ? $query_with_where : null,
+        'debug_filters' => isset($GLOBALS['debug_filters']) ? $GLOBALS['debug_filters'] : []
     );
 }
 ?>
