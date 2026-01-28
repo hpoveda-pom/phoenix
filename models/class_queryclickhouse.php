@@ -271,59 +271,17 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
         $GLOBALS['debug_filters'][] = "ORDER BY recibido (ClickHouse): " . $OrderBy;
     }
     
-    // Construir la query: WHERE debe aplicarse dentro de la subconsulta, no en el nivel superior
-    // Insertar el WHERE dentro de la subconsulta antes del cierre del paréntesis
-    // Inicializar query_with_where con la consulta original
-    $query_with_where = $Query;
-    
-    if (!empty($query_where)) {
-        // Verificar si la consulta original ya tiene un WHERE
-        $query_upper = strtoupper(trim($Query));
-        $has_where = preg_match('/\bWHERE\b/i', $Query);
-        
-        if ($has_where) {
-            // Si ya tiene WHERE, combinar con AND
-            // Buscar el último WHERE y agregar el filtro después
-            $last_where_pos = strripos($query_upper, ' WHERE ');
-            if ($last_where_pos !== false) {
-                // Encontrar el final de la cláusula WHERE (antes de GROUP BY, ORDER BY, LIMIT, etc.)
-                $where_clause_end = strlen($Query);
-                $keywords = [' GROUP BY ', ' ORDER BY ', ' LIMIT ', ' HAVING '];
-                foreach ($keywords as $keyword) {
-                    $pos = stripos($Query, $keyword, $last_where_pos);
-                    if ($pos !== false && $pos < $where_clause_end) {
-                        $where_clause_end = $pos;
-                    }
-                }
-                
-                // Insertar el nuevo filtro con AND
-                $where_clause = substr($Query, $last_where_pos + 6, $where_clause_end - $last_where_pos - 6);
-                $new_where = $where_clause . " AND " . substr($query_where, 7); // Remover " WHERE " del inicio
-                $query_with_where = substr($Query, 0, $last_where_pos + 6) . $new_where . substr($Query, $where_clause_end);
-            } else {
-                // Si no se encuentra WHERE pero debería estar, agregarlo al final antes de GROUP BY, ORDER BY, etc.
-                $query_with_where = $Query . " AND " . substr($query_where, 7);
-            }
-        } else {
-            // Si no tiene WHERE, insertarlo antes de GROUP BY, ORDER BY, LIMIT, etc.
-            $insert_pos = strlen($Query);
-            $keywords = [' GROUP BY ', ' ORDER BY ', ' LIMIT ', ' HAVING '];
-            foreach ($keywords as $keyword) {
-                $pos = stripos($Query, $keyword);
-                if ($pos !== false && $pos < $insert_pos) {
-                    $insert_pos = $pos;
-                }
-            }
-            
-            // Insertar el WHERE en la posición encontrada
-            $query_with_where = substr($Query, 0, $insert_pos) . " " . $query_where . " " . substr($Query, $insert_pos);
-        }
-    }
-    
-    // Asegurar que la query con WHERE tampoco tenga punto y coma final antes de ser usada como subconsulta
-    $query_with_where = rtrim(trim($query_with_where), ";\r\n\t ");
-    
+    // Construir la query base que se usará como subconsulta
+    // Nota: los filtros ($query_where) se aplican por fuera de la subconsulta para evitar
+    // romper la sintaxis de la query original (sobre todo si ya tiene su propio WHERE)
+    $query_with_where = rtrim(trim($Query), ";\r\n\t ");
+
+    // SELECT principal sin GroupBy: SELECT tb.* FROM (<query_original>) AS tb [WHERE filtros] [ORDER BY] [LIMIT/OFFSET]
     $query = "SELECT tb.* FROM (" . $query_with_where . ") AS tb";
+    if (!empty($query_where)) {
+        // $query_where ya incluye el prefijo " WHERE "
+        $query .= $query_where;
+    }
     if (!empty($query_order_by)) {
         $query .= $query_order_by;
     }
@@ -353,8 +311,13 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
         // Si hay OrderBy personalizado, usarlo; si no, usar el orden por defecto (Cantidad DESC)
         $groupby_order_by = !empty($OrderBy) ? " ORDER BY " . $OrderBy : " ORDER BY Cantidad DESC";
         
-        // Construir la query con GROUP BY: usar query_with_where que ya tiene el WHERE dentro de la subconsulta
-        $query = "SELECT " . $select_fields . " FROM (" . $query_with_where . ") AS tb " . $GroupBy . $groupby_order_by;
+        // Construir la query con GROUP BY sobre la subconsulta original,
+        // aplicando los filtros en el nivel externo (antes del GROUP BY)
+        $query = "SELECT " . $select_fields . " FROM (" . $query_with_where . ") AS tb";
+        if (!empty($query_where)) {
+            $query .= $query_where;
+        }
+        $query .= " " . $GroupBy . $groupby_order_by;
         if (!empty($query_limit)) {
             $query .= " " . $query_limit;
         }
@@ -513,11 +476,20 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
         $select_GroupBy_clean = rtrim($select_GroupBy, ',');
         // Optimización: usar una subconsulta que permite a ClickHouse usar external aggregation
         // Esto evita cargar todos los datos en memoria antes de hacer el GROUP BY
-        // Usar query_with_where que ya tiene el WHERE dentro de la subconsulta
-        $query_totalrows = "SELECT count(*) AS TOTAL_ROWS FROM (SELECT " . $select_GroupBy_clean . " FROM (" . $query_with_where . ") AS tb " . $GroupBy . ") AS grouped";
+        // Partimos de la misma subconsulta base y aplicamos los filtros fuera de ella
+        $base_group_query = "SELECT " . $select_GroupBy_clean . " FROM (" . $query_with_where . ") AS tb";
+        if (!empty($query_where)) {
+            $base_group_query .= $query_where;
+        }
+        $base_group_query .= " " . $GroupBy;
+
+        $query_totalrows = "SELECT count(*) AS TOTAL_ROWS FROM (" . $base_group_query . ") AS grouped";
     } else {
-        // Usar query_with_where que ya tiene el WHERE dentro de la subconsulta
+        // Contar sobre la subconsulta original, aplicando los filtros en el nivel externo
         $query_totalrows = "SELECT count(*) AS TOTAL_ROWS FROM (" . $query_with_where . ") AS tb";
+        if (!empty($query_where)) {
+            $query_totalrows .= $query_where;
+        }
     }
     
     $GLOBALS['debug_filters'][] = "SQL COUNT (ClickHouse): " . $query_totalrows;
