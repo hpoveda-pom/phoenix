@@ -83,60 +83,77 @@
                     </div>
                   <?php }else{ ?>
 
-                    <div class="widget-content" id="widget-content-<?php echo $row_dashbboard['ReportsId']; ?>">
-                      <table class="table table-sm fs-9">
-                        <thead>
-                          <tr>
-                            <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { ?>
-                              <?php $field_format = fieldFormat($row_headers); ?>
-                              <?php $header_title = getFieldAlias($row_headers); ?>
-                              <th class="<?php echo $field_format['class']; ?>"><?php echo $header_title; ?></th>
-                            <?php } ?>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <?php $total_values = []; ?>
-                          <?php foreach ($array_reports['data'] as $key => $row) { ?>
+                    <div class="widget-content-wrapper" id="widget-content-wrapper-<?php echo $row_dashbboard['ReportsId']; ?>">
+                      <div class="widget-content" id="widget-content-<?php echo $row_dashbboard['ReportsId']; ?>">
+                        <table class="table table-sm fs-9">
+                          <thead>
                             <tr>
                               <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { ?>
-                                <?php
-                                if (!isset($total_values[$row_headers])) {
-                                  $total_values[$row_headers] = 0;
-                                }
-                                $valor_dato = $row[$row_headers];
-                                $field_format = fieldFormat($row_headers, $valor_dato);
-                                if ($field_format['total']) {
-                                  $total_values[$row_headers] += $valor_dato;
-                                }
-                                $valor_dato = $field_format['value'];
-                                $valor_dato = maskedData($row_headers, $valor_dato, $row_dashbboard['UsersId'], $row_dashbboard['ReportsId']);
-                                ?>
-                                <td class="align-middle ps-3 <?php echo $field_format['class']; ?>" style="text-align: center;">
-                                  <?php echo $valor_dato; ?>
-                                </td>
+                                <?php $field_format = fieldFormat($row_headers); ?>
+                                <?php $header_title = getFieldAlias($row_headers); ?>
+                                <th class="<?php echo $field_format['class']; ?>"><?php echo $header_title; ?></th>
                               <?php } ?>
                             </tr>
+                          </thead>
+                          <tbody>
+                            <?php $total_values = []; ?>
+                            <?php foreach ($array_reports['data'] as $key => $row) { ?>
+                              <tr>
+                                <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { ?>
+                                  <?php
+                                  if (!isset($total_values[$row_headers])) {
+                                    $total_values[$row_headers] = 0;
+                                  }
+                                  $valor_dato = $row[$row_headers];
+                                  $field_format = fieldFormat($row_headers, $valor_dato);
+                                  if ($field_format['total']) {
+                                    $total_values[$row_headers] += $valor_dato;
+                                  }
+                                  $valor_dato = $field_format['value'];
+                                  $valor_dato = maskedData($row_headers, $valor_dato, $row_dashbboard['UsersId'], $row_dashbboard['ReportsId']);
+                                  ?>
+                                  <td class="align-middle ps-3 <?php echo $field_format['class']; ?>" style="text-align: center;">
+                                    <?php echo $valor_dato; ?>
+                                  </td>
+                                <?php } ?>
+                              </tr>
+                            <?php } ?>
+                          </tbody>
+                          <?php if($row_dashbboard['TotalAxisX']){ ?>
+                          <tfoot>
+                            <tr>
+                              <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { ?>
+                              <?php $field_format = fieldFormat($row_headers); ?>
+                              <?php if($field_format['total']){ ?>
+                              <?php $field_format = fieldFormat($row_headers,$total_values[$row_headers]); ?>
+                              <td class="<?php echo $field_format['class']; ?>">
+                                <strong><?php echo $field_format['value']; ?></strong>
+                              </td>
+                              <?php }else{ ?>
+                              <td></td>
+                              <?php } ?>
+                              <?php } ?>
+                            </tr>
+                          </tfoot>
                           <?php } ?>
-                        </tbody>
-                        <?php if($row_dashbboard['TotalAxisX']){ ?>
-                        <tfoot>
-                          <tr>
-                            <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { ?>
-                            <?php $field_format = fieldFormat($row_headers); ?>
-                            <?php if($field_format['total']){ ?>
-                            <?php $field_format = fieldFormat($row_headers,$total_values[$row_headers]); ?>
-                            <td class="<?php echo $field_format['class']; ?>">
-                              <strong><?php echo $field_format['value']; ?></strong>
-                            </td>
-                            <?php }else{ ?>
-                            <td></td>
-                            <?php } ?>
-                            <?php } ?>
-                          </tr>
-                        </tfoot>
-                        <?php } ?>
-                      </table>
+                        </table>
+                      </div>
+                      <div class="widget-fade-overlay" id="widget-fade-<?php echo $row_dashbboard['ReportsId']; ?>"></div>
                     </div>
+                    <?php 
+                    $row_count = count($array_reports['data']);
+                    if ($row_count > 5): 
+                    ?>
+                    <div class="widget-expand-control text-center mt-2">
+                      <button class="btn btn-sm btn-link text-muted widget-expand-btn" 
+                              data-widget-id="<?php echo $row_dashbboard['ReportsId']; ?>"
+                              style="font-size: 0.75rem; padding: 0.25rem 0.5rem; text-decoration: none;">
+                        <i class="fas fa-chevron-down me-1"></i>
+                        <span class="expand-text">Ver más (<?php echo $row_count - 5; ?> más)</span>
+                        <span class="collapse-text d-none">Ver menos</span>
+                      </button>
+                    </div>
+                    <?php endif; ?>
                   <?php } ?>
                 </div>
               <?php }else{ ?>
@@ -415,6 +432,26 @@
         updateTimeAgo(widgetId);
       });
     }, 60000); // Cada minuto
+
+    // Manejar expandir/colapsar widgets
+    document.querySelectorAll('.widget-expand-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const widgetId = this.getAttribute('data-widget-id');
+        const wrapper = document.getElementById('widget-content-wrapper-' + widgetId);
+        const expandText = this.querySelector('.expand-text');
+        const collapseText = this.querySelector('.collapse-text');
+        
+        if (wrapper.classList.contains('expanded')) {
+          wrapper.classList.remove('expanded');
+          expandText.classList.remove('d-none');
+          collapseText.classList.add('d-none');
+        } else {
+          wrapper.classList.add('expanded');
+          expandText.classList.add('d-none');
+          collapseText.classList.remove('d-none');
+        }
+      });
+    });
   });
   </script>
 
@@ -506,6 +543,103 @@
   
   .widget-footer .widget-refresh-btn i {
     font-size: 0.75rem !important;
+  }
+
+  /* Widget height control */
+  .widget-content-wrapper {
+    position: relative;
+    max-height: 200px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    transition: max-height 0.3s ease;
+  }
+
+  .widget-content-wrapper table tbody tr {
+    height: auto;
+  }
+
+  /* Aproximadamente 5 filas: header (40px) + 5 filas (30px cada una) = ~190px */
+  .widget-content-wrapper:not(.expanded) {
+    max-height: 190px;
+  }
+
+  .widget-content-wrapper.expanded {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .widget-content {
+    position: relative;
+  }
+
+  .widget-fade-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 50px;
+    background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.8), rgba(255,255,255,1));
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 10;
+  }
+
+  .widget-content-wrapper.expanded .widget-fade-overlay {
+    opacity: 0;
+    display: none;
+  }
+
+  .widget-expand-control {
+    margin-top: 0.5rem;
+    padding: 0.25rem 0;
+  }
+
+  .widget-expand-btn {
+    transition: all 0.2s ease;
+    border: none;
+    background: none;
+  }
+
+  .widget-expand-btn:hover {
+    text-decoration: underline !important;
+  }
+
+  .widget-expand-btn i {
+    transition: transform 0.3s ease;
+  }
+
+  .widget-content-wrapper.expanded ~ .widget-expand-control .widget-expand-btn i {
+    transform: rotate(180deg);
+  }
+
+  /* Ensure all widgets have consistent minimum height */
+  .dashboard-widget .card {
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .widget-content-wrapper {
+    flex: 1;
+  }
+
+  /* Custom scrollbar for widget content */
+  .widget-content-wrapper::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .widget-content-wrapper::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+
+  .widget-content-wrapper::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+  }
+
+  .widget-content-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #555;
   }
   
   .widget-footer-info {
