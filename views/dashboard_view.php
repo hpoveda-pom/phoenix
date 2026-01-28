@@ -19,7 +19,14 @@
       $widget_end = microtime(true);
       $widget_execution_time = $widget_end - $widget_start;
       
-      $array_info     = $array_reports['info'];
+      // Verificar si hay error en la consulta
+      $has_error = isset($array_reports['msg_error']) && !empty($array_reports['msg_error']);
+      $error_message = $has_error ? $array_reports['msg_error'] : '';
+      
+      // Verificar si hay datos
+      $has_data = isset($array_reports['data']) && is_array($array_reports['data']) && count($array_reports['data']) > 0;
+      
+      $array_info     = isset($array_reports['info']) ? $array_reports['info'] : ['total_rows' => 0];
       $array_info['execution_time'] = $widget_execution_time;
       $row_sync       = class_getLastExecution($row_dashbboard['LastExecution']);
 
@@ -81,8 +88,27 @@
                         </li>
                       </ul>
                     </div>
+                  <?php }elseif ($has_error) { ?>
+                    <!-- Mostrar error en el widget -->
+                    <div class="widget-content-wrapper" id="widget-content-wrapper-<?php echo $row_dashbboard['ReportsId']; ?>">
+                      <div class="widget-content d-flex align-items-center justify-content-center" id="widget-content-<?php echo $row_dashbboard['ReportsId']; ?>" style="min-height: 150px;">
+                        <div class="text-center text-muted">
+                          <i class="fas fa-exclamation-circle mb-2" style="font-size: 1.5rem; opacity: 0.5;"></i>
+                          <p class="mb-0 small"><?php echo htmlspecialchars($error_message); ?></p>
+                        </div>
+                      </div>
+                    </div>
+                  <?php }elseif (!$has_data) { ?>
+                    <!-- Mostrar mensaje cuando no hay resultados -->
+                    <div class="widget-content-wrapper" id="widget-content-wrapper-<?php echo $row_dashbboard['ReportsId']; ?>">
+                      <div class="widget-content d-flex align-items-center justify-content-center" id="widget-content-<?php echo $row_dashbboard['ReportsId']; ?>" style="min-height: 150px;">
+                        <div class="text-center text-muted">
+                          <i class="fas fa-inbox mb-2" style="font-size: 1.5rem; opacity: 0.5;"></i>
+                          <p class="mb-0 small">No hay resultados</p>
+                        </div>
+                      </div>
+                    </div>
                   <?php }else{ ?>
-
                     <?php 
                     $row_count = count($array_reports['data']);
                     $has_many_rows = $row_count > 5;
@@ -555,6 +581,8 @@
     position: relative;
     overflow-x: hidden;
     transition: max-height 0.3s ease;
+    display: flex;
+    flex-direction: column;
   }
 
   .widget-content-wrapper table tbody tr {
@@ -579,15 +607,72 @@
   }
 
   .widget-fade-overlay {
-    position: absolute;
+    position: sticky;
     bottom: 0;
     left: 0;
     right: 0;
+    width: 100%;
     height: 60px;
-    background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.7), rgba(255,255,255,0.95), rgba(255,255,255,1));
     pointer-events: none;
     transition: opacity 0.3s ease;
     z-index: 10;
+    margin-top: -60px;
+    flex-shrink: 0;
+    /* Light mode - gradiente blanco */
+    background: linear-gradient(to bottom, 
+      transparent, 
+      rgba(255, 255, 255, 0.7), 
+      rgba(255, 255, 255, 0.95), 
+      rgba(255, 255, 255, 1)
+    );
+  }
+
+  /* Dark mode - gradiente oscuro usando #141824 */
+  [data-bs-theme="dark"] .widget-fade-overlay,
+  [data-theme="dark"] .widget-fade-overlay,
+  .dark-mode .widget-fade-overlay,
+  body.dark .widget-fade-overlay,
+  .dark .widget-fade-overlay {
+    background: linear-gradient(to bottom, 
+      transparent, 
+      rgba(20, 24, 36, 0.7), 
+      rgba(20, 24, 36, 0.95), 
+      rgba(20, 24, 36, 1)
+    );
+  }
+
+  /* Si el card tiene fondo oscuro específico o usa la variable CSS */
+  .card.bg-dark .widget-fade-overlay,
+  .card.bg-secondary .widget-fade-overlay,
+  .card[style*="background-color: #141824"] .widget-fade-overlay,
+  .card[style*="background-color: rgb(20, 24, 36)"] .widget-fade-overlay {
+    background: linear-gradient(to bottom, 
+      transparent, 
+      rgba(20, 24, 36, 0.7), 
+      rgba(20, 24, 36, 0.95), 
+      rgba(20, 24, 36, 1)
+    );
+  }
+
+  /* Usar variable CSS si está disponible */
+  .card .widget-fade-overlay {
+    background: linear-gradient(to bottom, 
+      transparent, 
+      rgba(var(--phoenix-card-bg-rgb, 255, 255, 255), 0.7), 
+      rgba(var(--phoenix-card-bg-rgb, 255, 255, 255), 0.95), 
+      rgba(var(--phoenix-card-bg-rgb, 255, 255, 255), 1)
+    );
+  }
+
+  /* Dark mode con variable CSS */
+  [data-bs-theme="dark"] .card .widget-fade-overlay,
+  .dark-mode .card .widget-fade-overlay {
+    background: linear-gradient(to bottom, 
+      transparent, 
+      rgba(20, 24, 36, 0.7), 
+      rgba(20, 24, 36, 0.95), 
+      rgba(20, 24, 36, 1)
+    );
   }
 
   .widget-content-wrapper.expanded .widget-fade-overlay {
