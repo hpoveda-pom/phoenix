@@ -83,7 +83,11 @@
                     </div>
                   <?php }else{ ?>
 
-                    <div class="widget-content-wrapper" id="widget-content-wrapper-<?php echo $row_dashbboard['ReportsId']; ?>">
+                    <?php 
+                    $row_count = count($array_reports['data']);
+                    $has_many_rows = $row_count > 5;
+                    ?>
+                    <div class="widget-content-wrapper <?php echo $has_many_rows ? 'has-many-rows' : ''; ?>" id="widget-content-wrapper-<?php echo $row_dashbboard['ReportsId']; ?>">
                       <div class="widget-content" id="widget-content-<?php echo $row_dashbboard['ReportsId']; ?>">
                         <table class="table table-sm fs-9">
                           <thead>
@@ -138,11 +142,12 @@
                           <?php } ?>
                         </table>
                       </div>
+                      <?php if ($has_many_rows): ?>
                       <div class="widget-fade-overlay" id="widget-fade-<?php echo $row_dashbboard['ReportsId']; ?>"></div>
+                      <?php endif; ?>
                     </div>
                     <?php 
-                    $row_count = count($array_reports['data']);
-                    if ($row_count > 5): 
+                    if ($has_many_rows): 
                     ?>
                     <div class="widget-expand-control text-center mt-2">
                       <button class="btn btn-sm btn-link text-muted widget-expand-btn" 
@@ -548,8 +553,6 @@
   /* Widget height control */
   .widget-content-wrapper {
     position: relative;
-    max-height: 200px;
-    overflow-y: auto;
     overflow-x: hidden;
     transition: max-height 0.3s ease;
   }
@@ -558,9 +561,12 @@
     height: auto;
   }
 
-  /* Aproximadamente 5 filas: header (40px) + 5 filas (30px cada una) = ~190px */
-  .widget-content-wrapper:not(.expanded) {
-    max-height: 190px;
+  /* Solo aplicar altura máxima y scroll cuando hay más de 5 filas */
+  /* Aproximadamente 5 filas completas: header (40px) + 5 filas (30px cada una) + espacio extra = ~220px */
+  /* El difuminado empieza después de la fila 5, no sobre ella */
+  .widget-content-wrapper.has-many-rows:not(.expanded) {
+    max-height: 220px;
+    overflow-y: auto;
   }
 
   .widget-content-wrapper.expanded {
@@ -577,8 +583,8 @@
     bottom: 0;
     left: 0;
     right: 0;
-    height: 50px;
-    background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.8), rgba(255,255,255,1));
+    height: 60px;
+    background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.7), rgba(255,255,255,0.95), rgba(255,255,255,1));
     pointer-events: none;
     transition: opacity 0.3s ease;
     z-index: 10;
@@ -617,10 +623,39 @@
     min-height: 300px;
     display: flex;
     flex-direction: column;
+    height: 100%;
+  }
+
+  /* El contenido principal debe ocupar el espacio disponible */
+  .dashboard-widget .card .tab-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .dashboard-widget .card .tab-content #tableParents {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .dashboard-widget .card .table-responsive {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .widget-content-wrapper {
     flex: 1;
+    min-height: 0;
+  }
+
+  /* El footer siempre queda al final */
+  .widget-footer {
+    margin-top: auto;
   }
 
   /* Custom scrollbar for widget content */
