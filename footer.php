@@ -219,6 +219,119 @@
       setTimeout(updateClickHouseLogo, 100);
     }
   });
+
+  // Función para hacer scroll al elemento activo del menú
+  // Esta función complementa la funcionalidad existente en phoenix.js
+  function scrollToActiveMenuItem() {
+    const activeMenuItem = document.querySelector('.navbar-vertical .nav-link.active');
+    if (!activeMenuItem) return;
+    
+    // Verificar si el navbar está colapsado (usando la misma lógica que phoenix.js)
+    const isNavbarCollapsed = window.phoenix?.utils?.getItemFromStore('phoenixIsNavbarVerticalCollapsed', false);
+    if (isNavbarCollapsed) return;
+    
+    // Función para ejecutar el scroll
+    const doScroll = function() {
+      const navbarVertical = document.querySelector('.navbar-vertical-content');
+      const simplebarContent = document.querySelector('.navbar-vertical .simplebar-content');
+      const scrollContainer = simplebarContent || navbarVertical;
+      
+      if (scrollContainer) {
+        // Usar scrollIntoView con el contenedor como referencia
+        const itemRect = activeMenuItem.getBoundingClientRect();
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const scrollTop = scrollContainer.scrollTop;
+        const itemOffsetTop = activeMenuItem.offsetTop;
+        const containerHeight = scrollContainer.clientHeight;
+        const itemHeight = activeMenuItem.offsetHeight;
+        const targetScroll = itemOffsetTop - (containerHeight / 2) + (itemHeight / 2);
+        
+        scrollContainer.scrollTo({
+          top: Math.max(0, targetScroll),
+          behavior: 'smooth'
+        });
+      } else {
+        activeMenuItem.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+      }
+    };
+    
+    // Buscar elementos colapsables que contienen el elemento activo
+    const parentCollapses = [];
+    let parent = activeMenuItem.parentElement;
+    while (parent && parent !== document.body) {
+      if (parent.classList.contains('collapse')) {
+        parentCollapses.push(parent);
+      }
+      parent = parent.parentElement;
+    }
+    
+    // Si hay elementos colapsables, esperar a que se expandan
+    if (parentCollapses.length > 0) {
+      let allExpanded = true;
+      parentCollapses.forEach(collapse => {
+        if (!collapse.classList.contains('show')) {
+          allExpanded = false;
+        }
+      });
+      
+      if (allExpanded) {
+        // Todos ya están expandidos, hacer scroll
+        setTimeout(doScroll, 200);
+      } else {
+        // Esperar a que Bootstrap expanda los elementos
+        // Escuchar eventos shown.bs.collapse
+        let expandedCount = 0;
+        const totalCollapses = parentCollapses.length;
+        
+        parentCollapses.forEach(collapse => {
+          if (!collapse.classList.contains('show')) {
+            collapse.addEventListener('shown.bs.collapse', function handler() {
+              expandedCount++;
+              collapse.removeEventListener('shown.bs.collapse', handler);
+              if (expandedCount === totalCollapses) {
+                setTimeout(doScroll, 200);
+              }
+            }, { once: true });
+          } else {
+            expandedCount++;
+          }
+        });
+        
+        // Si todos ya estaban expandidos
+        if (expandedCount === totalCollapses) {
+          setTimeout(doScroll, 200);
+        }
+        
+        // Timeout de seguridad
+        setTimeout(doScroll, 1000);
+      }
+    } else {
+      // No hay elementos colapsables, hacer scroll directamente
+      setTimeout(doScroll, 200);
+    }
+  }
+
+  // Ejecutar después de que Phoenix y Bootstrap se inicialicen
+  function initScrollToActive() {
+    if (window.phoenix && window.phoenix.utils && window.bootstrap) {
+      scrollToActiveMenuItem();
+    } else {
+      setTimeout(initScrollToActive, 100);
+    }
+  }
+  
+  // Esperar a que todo esté listo
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(initScrollToActive, 500);
+    });
+  } else {
+    setTimeout(initScrollToActive, 500);
+  }
 </script>
 
 

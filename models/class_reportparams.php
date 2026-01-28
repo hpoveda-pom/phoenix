@@ -269,7 +269,7 @@ class ReportParams {
         FROM reports a
         INNER JOIN category b ON b.CategoryId = a.CategoryId 
         INNER JOIN users c ON c.UsersId = a.UsersId 
-        INNER JOIN connections d ON d.ConnectionId = a.ConnectionId";
+        LEFT JOIN connections d ON d.ConnectionId = a.ConnectionId";
         
         if ($include_pipeline) {
             $query_reports_info .= "
