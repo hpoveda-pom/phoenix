@@ -46,9 +46,15 @@ function class_queryMysqli($ConnectionId, $Query, $ArrayFilter, $array_groupby, 
                 continue;
             }
             
-            // Validar que el nombre del campo no sea 'GroupBy' (nombre del input)
-            if (empty($field_name) || $field_name === 'GroupBy' || strtolower($field_name) === 'groupby') {
-                $debug_info[] = "ERROR: Nombre de campo inválido: '$field_name' (no puede ser 'GroupBy')";
+            // Validar que el nombre del campo no sea 'GroupBy', 'field', o vacío
+            // 'field' es el valor de 'key' (metadata), NO debe usarse como nombre de campo
+            if (empty($field_name) || 
+                $field_name === 'GroupBy' || 
+                strtolower($field_name) === 'groupby' ||
+                $field_name === 'field' ||
+                strtolower($field_name) === 'field') {
+                $debug_info[] = "ERROR: Nombre de campo inválido: '$field_name' (no puede ser 'field', 'GroupBy' o vacío)";
+                $debug_info[] = "row_groupby completo: " . json_encode($row_groupby);
                 continue;
             }
             

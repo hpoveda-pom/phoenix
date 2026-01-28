@@ -32,7 +32,13 @@ function class_querySqlServer($ConnectionId, $Query, $ArrayFilter, $array_groupb
                 continue;
             }
             
-            if (empty($field_name) || $field_name === 'GroupBy' || strtolower($field_name) === 'groupby') {
+            // Validar que el nombre del campo no sea 'GroupBy', 'field', o vacío
+            // 'field' es el valor de 'key' (metadata), NO debe usarse como nombre de campo
+            if (empty($field_name) || 
+                $field_name === 'GroupBy' || 
+                strtolower($field_name) === 'groupby' ||
+                $field_name === 'field' ||
+                strtolower($field_name) === 'field') {
                 continue;
             }
             

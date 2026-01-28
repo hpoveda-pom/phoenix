@@ -27,6 +27,7 @@ require_once($base_dir . '/models/class_namingconvention.php');
 require_once($base_dir . '/models/class_lastexecution.php');
 require_once($base_dir . '/models/class_ociformat.php');
 require_once($base_dir . '/models/class_fieldalias.php');
+require_once($base_dir . '/models/class_reportparams.php');
 
 //php ini settings
 require_once($base_dir . '/config.php');
@@ -68,11 +69,6 @@ if (isset($_GET['OrderBy'])) {
   $OrderBy = $_GET['OrderBy'];
 }
 
-$Filter = null;
-if (isset($_GET['Filter'])) {
-  $Filter = $_GET['Filter'];
-}
-
 $Limit = 10;
 if (isset($_GET['Limit'])) {
   $Limit = $_GET['Limit'];
@@ -84,239 +80,44 @@ if (isset($_GET['unset'])) {
   }
 }
 
-$filter_selected = array();
-if (isset($_GET['filter_selected'])) {
-  $filter_selected = $_GET['filter_selected'];
-  // Si viene como string JSON (desde DataTables AJAX), decodificarlo
-  if (is_string($filter_selected)) {
-    $decoded = json_decode($filter_selected, true);
-    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-      $filter_selected = $decoded;
-    }
-  }
-}
+// Procesar todos los parámetros usando la clase centralizada
+$params = ReportParams::processAll(array(
+    'Filter' => isset($_GET['Filter']) ? $_GET['Filter'] : null,
+    'filter_selected' => isset($_GET['filter_selected']) ? $_GET['filter_selected'] : array(),
+    'GroupBy' => isset($_GET['GroupBy']) ? $_GET['GroupBy'] : null,
+    'groupby_selected' => isset($_GET['groupby_selected']) ? $_GET['groupby_selected'] : array(),
+    'SumBy' => isset($_GET['SumBy']) ? $_GET['SumBy'] : null,
+    'sumby_selected' => isset($_GET['sumby_selected']) ? $_GET['sumby_selected'] : array(),
+    'OrderBy' => isset($_GET['OrderBy']) ? $_GET['OrderBy'] : null,
+    'orderby_selected' => isset($_GET['orderby_selected']) ? $_GET['orderby_selected'] : array()
+));
 
-// Convertir filter_selected del formato procesado (key, operator, value) al formato original (filter, operator)
-// si viene desde DataTables
-$array_filters = array();
-if (!empty($filter_selected) && is_array($filter_selected)) {
-  // Verificar si viene en formato procesado (desde DataTables) o formato original
-  $first_item = reset($filter_selected);
-  if (is_array($first_item) && isset($first_item['key']) && isset($first_item['operator']) && isset($first_item['value'])) {
-    // Es formato procesado (desde DataTables), convertir al formato original
-    $grouped_filters = array();
-    foreach ($filter_selected as $filter_item) {
-      if (isset($filter_item['key']) && isset($filter_item['operator']) && isset($filter_item['value'])) {
-        $key = $filter_item['key'];
-        if (!isset($grouped_filters[$key])) {
-          $grouped_filters[$key] = array();
-        }
-        $grouped_filters[$key][] = array(
-          'operator' => $filter_item['operator'],
-          'value' => $filter_item['value']
-        );
-      }
-    }
-    // Convertir a formato original
-    foreach ($grouped_filters as $key => $filters) {
-      foreach ($filters as $filter) {
-        $array_filters[] = array(
-          'filter' => array($key => $filter['value']),
-          'operator' => $filter['operator']
-        );
-      }
-    }
-  } else {
-    // Es formato original, usar directamente
-    $array_filters = $filter_selected;
-  }
-}
+$filter_results = $params['filter_results'];
+$groupby_results = $params['groupby_results'];
+$sumby_results = $params['sumby_results'];
+$orderby_results = $params['orderby_results'];
+// Obtener información del reporte usando la clase centralizada (con cache)
+// data.php necesita información de pipeline, así que usamos include_pipeline = true
+$row_reports_info = ReportParams::getReportInfo($ReportsId, true);
 
-// Procesar Filter de la URL (igual que en reports.php)
-if (is_array($Filter)) {
-  // Manejar arrays indexados numéricamente: Filter[0][field], Filter[1][field], etc.
-  if (isset($Filter[0]) && is_array($Filter[0])) {
-    // Es un array indexado: Filter[0][field], Filter[1][field], etc.
-    foreach ($Filter as $filter_index => $filter_item) {
-      if (is_array($filter_item) && isset($filter_item['field']) && !empty(trim($filter_item['field']))) {
-        $filter_keyword = isset($filter_item['keyword']) ? trim($filter_item['keyword']) : '';
-        // Solo agregar el filtro si el keyword no está vacío (excepto para operadores como 'is null')
-        if (!empty($filter_keyword) || (isset($filter_item['operator']) && in_array(strtolower($filter_item['operator']), ['is null', 'is not null']))) {
-          $array_filters[] = array(
-            'filter' => array($filter_item['field'] => $filter_keyword),
-            'operator' => isset($filter_item['operator']) && !empty($filter_item['operator']) ? $filter_item['operator'] : '='
-          );
-        }
-      }
-    }
-  } elseif (isset($Filter['field']) && !empty(trim($Filter['field']))) {
-    // Formato antiguo: Filter[field] (sin índice numérico)
-    // Asegurarse de que el keyword también esté presente y no vacío (excepto para operadores especiales)
-    $filter_keyword = isset($Filter['keyword']) ? trim($Filter['keyword']) : '';
-    $filter_operator = isset($Filter['operator']) && !empty($Filter['operator']) ? $Filter['operator'] : '=';
-    
-    // Solo agregar el filtro si el keyword no está vacío (excepto para operadores como 'is null')
-    if (!empty($filter_keyword) || in_array(strtolower($filter_operator), ['is null', 'is not null'])) {
-      $array_filters[] = array(
-        'filter' => array($Filter['field'] => $filter_keyword),
-        'operator' => $filter_operator
-      );
-    }
-  }
-}
-
-$filter_results = array();
-if (is_array($array_filters) && !empty($array_filters)) {
-  foreach ($array_filters as $key_filters => $row_filters) {
-    if (is_array($row_filters)) {
-      foreach ($row_filters['filter'] as $filter_key => $filter_value) {
-        $filter_results[] = array(
-          'key' => $filter_key,
-          'operator' => $row_filters['operator'],
-          'value' => $filter_value,
-        );
-      }
-    }
-  }
-}
-
-//Group by selected
-$groupby_selected = array();
-if (isset($_GET['groupby_selected'])) {
-  $groupby_selected = $_GET['groupby_selected'];
-}
-
-$array_groupby = $groupby_selected;
-if (is_array($GroupBy)) {
-  if (isset($GroupBy['field']) && !empty($GroupBy['field'])) {
-    $array_groupby[] = array(
-      'GroupBy' => $GroupBy['field'],
-    );
-  }
-}
-
-$groupby_results = array();
-if (is_array($array_groupby) && !empty($array_groupby)) {
-  foreach ($array_groupby as $key_groupby => $row_groupby) {
-    if (is_array($row_groupby)) {
-      // Si tiene la clave 'GroupBy', usar ese valor directamente como nombre de campo
-      if (isset($row_groupby['GroupBy']) && !empty($row_groupby['GroupBy'])) {
-        $groupby_results[] = array(
-          'key' => 'field',  // Cambiar 'GroupBy' por 'field' para evitar confusión
-          'value' => $row_groupby['GroupBy'],  // Este es el nombre real del campo (ej: 'canal_venta')
-        );
-      } else {
-        // Si no, procesar como antes
-        foreach ($row_groupby as $groupby_key => $groupby_value) {
-          // Solo agregar si la clave no es 'GroupBy' o si el valor no está vacío
-          if ($groupby_key !== 'GroupBy' || !empty($groupby_value)) {
-            $groupby_results[] = array(
-              'key' => $groupby_key,
-              'value' => $groupby_value,
-            );
-          }
-        }
-      }
-    }
-  }
-}
-
-//Sum by selected
-$SumBy = null;
-if (isset($_GET['SumBy'])) {
-  $SumBy = $_GET['SumBy'];
-}
-
-$sumby_selected = array();
-if (isset($_GET['sumby_selected'])) {
-  $sumby_selected = $_GET['sumby_selected'];
-}
-
-$array_sumby = $sumby_selected;
-if (is_array($SumBy)) {
-  if (isset($SumBy['field']) && !empty($SumBy['field'])) {
-    $array_sumby[] = array(
-      'SumBy' => $SumBy['field'],
-    );
-  }
-}
-
-$sumby_results = array();
-if (is_array($array_sumby) && !empty($array_sumby)) {
-  foreach ($array_sumby as $key_sumby => $row_sumby) {
-    if (is_array($row_sumby)) {
-      // Si tiene la clave 'SumBy', usar ese valor directamente como nombre de campo
-      if (isset($row_sumby['SumBy']) && !empty($row_sumby['SumBy'])) {
-        $sumby_results[] = array(
-          'key' => 'field',
-          'value' => $row_sumby['SumBy'],
-        );
-      } else {
-        foreach ($row_sumby as $sumby_key => $sumby_value) {
-          if ($sumby_key !== 'SumBy' || !empty($sumby_value)) {
-            $sumby_results[] = array(
-              'key' => $sumby_key,
-              'value' => $sumby_value,
-            );
-          }
-        }
-      }
-    }
-  }
-}
-
-//OrderBy by selected
-$orderby_selected = array();
-if (isset($_GET['orderby_selected'])) {
-  $orderby_selected = $_GET['orderby_selected'];
-}
-
-$array_orderby = $orderby_selected;
-if (is_array($OrderBy)) {
-  if ($OrderBy['field']) {
-    $array_orderby[] = array(
-      'OrderBy' => array($OrderBy['field'] => $OrderBy['operator']),
-    );
-  }
-}
-
-$orderby_results = array();
-if (is_array($array_orderby) && !empty($array_orderby)) {
-  foreach ($array_orderby as $key_orderby => $row_orderby) {
-    if (is_array($row_orderby)) {
-      foreach ($row_orderby['OrderBy'] as $orderby_key => $orderby_value) {
-        $orderby_results[] = array(
-          'key' => $orderby_key,
-          'value' => $orderby_value,
-        );
-      }
-    }
-  }
-}
-if ($ReportsId) {
-  $query_reports_info = "
-  SELECT a.*, b.Title AS Category, c.FullName, d.Connector AS conn_connector, d.Schema AS conn_schema, d.Title AS conn_title,
-  e.ConnSource, e.TableSource, e.Status AS PipelineStatus,e.SchemaCreate, e.TableCreate, e.TableTruncate,e.TimeStamp,e.RecordsAlert
-  FROM reports a 
-  INNER JOIN category b ON b.CategoryId = a.CategoryId 
-  INNER JOIN users c ON c.UsersId = a.UsersId 
-  INNER JOIN connections d ON d.ConnectionId = a.ConnectionId 
-  LEFT JOIN pipelines e ON e.ReportsId = a.ReportsId
-  WHERE a.Status = 1 AND b.Status = 1 AND a.ReportsId = ".$ReportsId." ORDER BY `Order` ASC
-  ";
-  $reports_info = class_Recordset(1, $query_reports_info, null, null, 1);
-  if (isset($reports_info['data'][0])) {
-    $row_reports_info = $reports_info['data'][0];
-  } else {
-    if ($action != "datatables") {
-      echo '<div class="alert alert-subtle-danger" role="alert">Error, no ha seleccionado un reporte válido!</div>';
-      exit;
-    }
-  }
-}else{
+if (!$row_reports_info) {
   if ($action != "datatables") {
     echo '<div class="alert alert-subtle-danger" role="alert">Error, no ha seleccionado un reporte válido!</div>';
     exit;
+  }
+  // Para datatables, lanzar excepción que será capturada
+  if ($action == "datatables") {
+    throw new Exception('No se pudo obtener información del reporte');
+  }
+}
+
+if (isset($row_reports_info['error']) && !empty($row_reports_info['error'])) {
+  if ($action != "datatables") {
+    echo '<div class="alert alert-subtle-danger" role="alert">Error al consultar el reporte: ' . htmlspecialchars($row_reports_info['error']) . '</div>';
+    exit;
+  }
+  if ($action == "datatables") {
+    throw new Exception('Error al consultar el reporte: ' . $row_reports_info['error']);
   }
 }
 

@@ -1,6 +1,12 @@
         <table id="reportsTable" class="table table-striped table-sm fs-9 mb-0">
           <thead>
             <tr>
+              <?php 
+              // Si no hay headers, DataTables los obtendrá desde data.php
+              // Pero necesitamos al menos una columna para que DataTables se inicialice
+              if (empty($array_reports['headers']) || !is_array($array_reports['headers'])): ?>
+                <th>Cargando...</th>
+              <?php else: ?>
               <?php foreach ($array_reports['headers'] as $key_headers => $row_headers) { 
                 $header_lower = strtolower($row_headers);
                 $header_class = '';
@@ -41,6 +47,7 @@
                 </button>
               </th>
             <?php } ?>
+              <?php endif; ?>
           </tr>
         </thead>
         <tbody>

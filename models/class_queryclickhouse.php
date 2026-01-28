@@ -36,20 +36,31 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
             }
             
             // Obtener el nombre del campo - SIEMPRE debe estar en 'value'
+            // NUNCA usar 'key' porque es solo metadata ('field' es el valor de key, no el nombre del campo)
             $field_name = null;
             if (isset($row_groupby['value']) && !empty($row_groupby['value'])) {
                 $field_name = trim($row_groupby['value']);
             } elseif (isset($row_groupby['GroupBy']) && !empty($row_groupby['GroupBy'])) {
                 // Fallback: si viene directamente como 'GroupBy'
                 $field_name = trim($row_groupby['GroupBy']);
+            } elseif (isset($row_groupby['field']) && !empty($row_groupby['field'])) {
+                // Fallback adicional: si viene como 'field' (desde URL directa)
+                $field_name = trim($row_groupby['field']);
             } else {
                 $debug_info[] = "ERROR: No se pudo determinar el nombre del campo en: " . json_encode($row_groupby);
+                $debug_info[] = "Estructura recibida - key: " . (isset($row_groupby['key']) ? $row_groupby['key'] : 'NO EXISTE') . ", value: " . (isset($row_groupby['value']) ? $row_groupby['value'] : 'NO EXISTE');
                 continue;
             }
             
-            // Validar que el nombre del campo no sea 'GroupBy'
-            if (empty($field_name) || $field_name === 'GroupBy' || strtolower($field_name) === 'groupby') {
-                $debug_info[] = "ERROR: Nombre de campo inválido: '$field_name'";
+            // Validar que el nombre del campo no sea 'GroupBy', 'field', o vacío
+            // 'field' es el valor de 'key' (metadata), NO debe usarse como nombre de campo
+            if (empty($field_name) || 
+                $field_name === 'GroupBy' || 
+                strtolower($field_name) === 'groupby' ||
+                $field_name === 'field' ||
+                strtolower($field_name) === 'field') {
+                $debug_info[] = "ERROR: Nombre de campo inválido: '$field_name' (no puede ser 'field', 'GroupBy' o vacío)";
+                $debug_info[] = "row_groupby completo: " . json_encode($row_groupby);
                 continue;
             }
             

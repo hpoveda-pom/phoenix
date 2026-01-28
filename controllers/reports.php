@@ -22,6 +22,7 @@ require_once('models/class_fieldalias.php');
 require_once('models/class_tooltips.php');
 require_once('models/class_cruds.php');
 require_once('models/class_fieldformat.php');
+require_once('models/class_reportparams.php');
 
 //CRUD
 $form_id = null;
@@ -44,21 +45,6 @@ if (isset($_GET['Id'])) {
   $Id = $_GET['Id'];
 }
 
-$GroupBy = null;
-if (isset($_GET['GroupBy'])) {
-  $GroupBy = $_GET['GroupBy'];
-}
-
-$OrderBy = null;
-if (isset($_GET['OrderBy'])) {
-  $OrderBy = $_GET['OrderBy'];
-}
-
-$Filter = null;
-if (isset($_GET['Filter'])) {
-  $Filter = $_GET['Filter'];
-}
-
 $Limit = 10;
 if (isset($_GET['Limit'])) {
   $Limit = $_GET['Limit'];
@@ -70,162 +56,22 @@ if (isset($_GET['unset'])) {
   }
 }
 
-$filter_selected = array();
-if (isset($_GET['filter_selected'])) {
-  $filter_selected = $_GET['filter_selected'];
-}
+// Procesar todos los parámetros usando la clase centralizada
+$params = ReportParams::processAll(array(
+    'Filter' => isset($_GET['Filter']) ? $_GET['Filter'] : null,
+    'filter_selected' => isset($_GET['filter_selected']) ? $_GET['filter_selected'] : array(),
+    'GroupBy' => isset($_GET['GroupBy']) ? $_GET['GroupBy'] : null,
+    'groupby_selected' => isset($_GET['groupby_selected']) ? $_GET['groupby_selected'] : array(),
+    'SumBy' => isset($_GET['SumBy']) ? $_GET['SumBy'] : null,
+    'sumby_selected' => isset($_GET['sumby_selected']) ? $_GET['sumby_selected'] : array(),
+    'OrderBy' => isset($_GET['OrderBy']) ? $_GET['OrderBy'] : null,
+    'orderby_selected' => isset($_GET['orderby_selected']) ? $_GET['orderby_selected'] : array()
+));
 
-$array_filters = $filter_selected;
-if (is_array($Filter)) {
-  // Manejar arrays indexados numéricamente: Filter[0][field], Filter[1][field], etc.
-  if (isset($Filter[0]) && is_array($Filter[0])) {
-    // Es un array indexado: Filter[0][field], Filter[1][field], etc.
-    foreach ($Filter as $filter_index => $filter_item) {
-      if (is_array($filter_item) && isset($filter_item['field']) && !empty(trim($filter_item['field']))) {
-        $filter_keyword = isset($filter_item['keyword']) ? trim($filter_item['keyword']) : '';
-        // Solo agregar el filtro si el keyword no está vacío (excepto para operadores como 'is null')
-        if (!empty($filter_keyword) || (isset($filter_item['operator']) && in_array(strtolower($filter_item['operator']), ['is null', 'is not null']))) {
-          $array_filters[] = array(
-            'filter' => array($filter_item['field'] => $filter_keyword),
-            'operator' => isset($filter_item['operator']) && !empty($filter_item['operator']) ? $filter_item['operator'] : '='
-          );
-        }
-      }
-    }
-  } elseif (isset($Filter['field']) && !empty(trim($Filter['field']))) {
-    // Formato antiguo: Filter[field] (sin índice numérico)
-    // Asegurarse de que el keyword también esté presente y no vacío (excepto para operadores especiales)
-    $filter_keyword = isset($Filter['keyword']) ? trim($Filter['keyword']) : '';
-    $filter_operator = isset($Filter['operator']) && !empty($Filter['operator']) ? $Filter['operator'] : '=';
-    
-    // Solo agregar el filtro si el keyword no está vacío (excepto para operadores como 'is null')
-    if (!empty($filter_keyword) || in_array(strtolower($filter_operator), ['is null', 'is not null'])) {
-      $array_filters[] = array(
-        'filter' => array($Filter['field'] => $filter_keyword),
-        'operator' => $filter_operator
-      );
-    }
-  }
-}
-
-$filter_results = array();
-if (is_array($array_filters) && !empty($array_filters)) {
-  foreach ($array_filters as $key_filters => $row_filters) {
-    if (is_array($row_filters)) {
-      foreach ($row_filters['filter'] as $filter_key => $filter_value) {
-        $filter_results[] = array(
-          'key' => $filter_key,
-          'operator' => $row_filters['operator'],
-          'value' => $filter_value,
-        );
-      }
-    }
-  }
-}
-
-
-//Group by selected
-$groupby_selected = array();
-if (isset($_GET['groupby_selected'])) {
-  $groupby_selected = $_GET['groupby_selected'];
-}
-
-$array_groupby = $groupby_selected;
-if (is_array($GroupBy)) {
-  if ($GroupBy['field']) {
-    $array_groupby[] = array(
-      'GroupBy' => $GroupBy['field'],
-    );
-  }
-}
-
-$groupby_results = array();
-if (is_array($array_groupby) && !empty($array_groupby)) {
-  foreach ($array_groupby as $key_groupby => $row_groupby) {
-    if (is_array($row_groupby)) {
-      foreach ($row_groupby as $groupby_key => $groupby_value) {
-        $groupby_results[] = array(
-          'key' => $groupby_key,
-          'value' => $groupby_value,
-        );
-      }
-    }
-  }
-}
-
-//Sum by selected
-$SumBy = null;
-if (isset($_GET['SumBy'])) {
-  $SumBy = $_GET['SumBy'];
-}
-
-$sumby_selected = array();
-if (isset($_GET['sumby_selected'])) {
-  $sumby_selected = $_GET['sumby_selected'];
-}
-
-$array_sumby = $sumby_selected;
-if (is_array($SumBy)) {
-  if ($SumBy['field']) {
-    $array_sumby[] = array(
-      'SumBy' => $SumBy['field'],
-    );
-  }
-}
-
-$sumby_results = array();
-if (is_array($array_sumby) && !empty($array_sumby)) {
-  foreach ($array_sumby as $key_sumby => $row_sumby) {
-    if (is_array($row_sumby)) {
-      // Si tiene la clave 'SumBy', usar ese valor directamente como nombre de campo
-      if (isset($row_sumby['SumBy']) && !empty($row_sumby['SumBy'])) {
-        $sumby_results[] = array(
-          'key' => 'field',
-          'value' => $row_sumby['SumBy'],
-        );
-      } else {
-        // Si no, procesar como antes
-        foreach ($row_sumby as $sumby_key => $sumby_value) {
-          if ($sumby_key !== 'SumBy' || !empty($sumby_value)) {
-            $sumby_results[] = array(
-              'key' => $sumby_key,
-              'value' => $sumby_value,
-            );
-          }
-        }
-      }
-    }
-  }
-}
-
-//OrderBy by selected
-$orderby_selected = array();
-if (isset($_GET['orderby_selected'])) {
-  $orderby_selected = $_GET['orderby_selected'];
-}
-
-$array_orderby = $orderby_selected;
-if (is_array($OrderBy)) {
-  if ($OrderBy['field']) {
-    $array_orderby[] = array(
-      'OrderBy' => array($OrderBy['field'] => $OrderBy['operator']),
-    );
-  }
-}
-
-$orderby_results = array();
-if (is_array($array_orderby) && !empty($array_orderby)) {
-  foreach ($array_orderby as $key_orderby => $row_orderby) {
-    if (is_array($row_orderby)) {
-      foreach ($row_orderby['OrderBy'] as $orderby_key => $orderby_value) {
-        $orderby_results[] = array(
-          'key' => $orderby_key,
-          'value' => $orderby_value,
-        );
-      }
-    }
-  }
-}
+$filter_results = $params['filter_results'];
+$groupby_results = $params['groupby_results'];
+$sumby_results = $params['sumby_results'];
+$orderby_results = $params['orderby_results'];
 
 //limit list
 $array_limit = array(
@@ -251,58 +97,16 @@ $array_orderby = array(
   'DESC' => 'Descendente'
 );
 
-if ($Id) {
-  $query_reports_info = "
-  SELECT a.*, b.Title AS Category, c.FullName, d.Connector AS conn_connector, d.Schema AS conn_schema, d.Title AS conn_title,
+// Obtener información del reporte usando la clase centralizada (con cache)
+$row_reports_info = ReportParams::getReportInfo($Id, false);
 
-  CASE
-  WHEN e.LastExecution IS NOT NULL THEN e.LastExecution
-  WHEN f.LastExecution IS NOT NULL THEN f.LastExecution
-  ELSE NULL
-  END AS LastExecution,
-
-  CASE
-  WHEN e.SyncStatus IS NOT NULL THEN e.SyncStatus
-  WHEN f.SyncStatus IS NOT NULL THEN f.SyncStatus
-  ELSE NULL
-  END AS SyncStatus,
-  g.FullName AS UserUpdatedName
-
-  FROM reports a
-  INNER JOIN category b ON b.CategoryId = a.CategoryId 
-  INNER JOIN users c ON c.UsersId = a.UsersId 
-  INNER JOIN connections d ON d.ConnectionId = a.ConnectionId
-
-  LEFT JOIN pipelines e ON e.ReportsId = a.ReportsId
-  LEFT JOIN pipelines f ON f.PipelinesId = a.PipelinesId
-  LEFT JOIN users g ON g.UsersId = a.UserUpdated 
-
-  WHERE a.ReportsId = ".$Id."
-  ORDER BY `Order` ASC
-  ";
-  $reports_info = class_Recordset(1, $query_reports_info, null, null, 1);
-
-  // Verificar si hay un error en la consulta
-  if (isset($reports_info['error']) && !empty($reports_info['error'])) {
-    echo '<div class="alert alert-subtle-danger" role="alert">Error al consultar el reporte: ' . htmlspecialchars($reports_info['error']) . '</div>';
-    exit;
-  }
-
-  if (isset($reports_info['info']['total_rows']) && $reports_info['info']['total_rows'] > 0 && isset($reports_info['data'][0])) {
-    $row_reports_info = $reports_info['data'][0];
-  } else {
-    $error_msg = 'Error, no ha seleccionado un reporte válido!';
-    if (isset($reports_info['error']) && !empty($reports_info['error'])) {
-      $error_msg .= '<br>Detalle: ' . htmlspecialchars($reports_info['error']);
-    } elseif (isset($reports_info['msg_error']) && !empty($reports_info['msg_error'])) {
-      $error_msg .= '<br>Detalle: ' . htmlspecialchars($reports_info['msg_error']);
-    }
-    echo '<div class="alert alert-subtle-danger" role="alert">' . $error_msg . '</div>';
-    exit;
-  }
-  
-}else{
+if (!$row_reports_info) {
   echo '<div class="alert alert-subtle-danger" role="alert">Error, no ha seleccionado un reporte válido!</div>';
+  exit;
+}
+
+if (isset($row_reports_info['error']) && !empty($row_reports_info['error'])) {
+  echo '<div class="alert alert-subtle-danger" role="alert">Error al consultar el reporte: ' . htmlspecialchars($row_reports_info['error']) . '</div>';
   exit;
 }
 
@@ -355,40 +159,107 @@ foreach ($excel_data['headers'] as $key_headers => $row_headers) {
 
 //reports recordset
 if (isset($row_reports_info['TypeId']) && $row_reports_info['TypeId']==1) {
-
+  // Por defecto usamos DataTables para reportes tipo 1
+  // Solo obtenemos headers, los datos los obtendrá DataTables desde data.php
+  // Esto evita procesamiento duplicado
+  
   // Capturar tiempo de inicio de ejecución
   $query_execution_start = microtime(true);
   
-  $array_headers  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], null, null, 1, null, null, $sumby_results);
-
-
-
-
-  //resultados  
-  $array_reports  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, $Limit, null, null, $sumby_results);
-
-
+  // IMPORTANTE: Cuando hay GroupBy o SumBy, los headers cambian (se agregan campos calculados como "Cantidad")
+  // Por eso ejecutamos el query con esos parámetros para obtener los headers correctos
+  // Usamos Limit=1 para evitar overload (solo necesitamos la estructura, no todos los datos)
+  
+  $array_headers = null;
+  
+  // Si hay GroupBy o SumBy, obtener headers con esos parámetros aplicados (headers incluyen campos calculados)
+  if (!empty($groupby_results) || !empty($sumby_results)) {
+    $array_headers = class_Recordset(
+      $row_reports_info['ConnectionId'], 
+      $row_reports_info['Query'], 
+      $filter_results,  // Aplicar filtros
+      $groupby_results,  // Aplicar groupby para obtener headers con campos calculados (Cantidad, etc.)
+      1,  // Solo 1 fila para obtener headers (evita overload)
+      null, 
+      null, 
+      $sumby_results  // Aplicar sumby para obtener headers con campos calculados
+    );
+  }
+  
+  // Si no se obtuvieron headers (o no había GroupBy/SumBy), obtener estructura base
+  if (!isset($array_headers['headers']) || empty($array_headers['headers'])) {
+    $array_headers = class_Recordset(
+      $row_reports_info['ConnectionId'], 
+      $row_reports_info['Query'], 
+      $filter_results,  // Aplicar filtros si existen
+      null,  // Sin groupby para obtener estructura base
+      1,  // Solo 1 fila para obtener headers (evita overload)
+      null, 
+      null, 
+      null  // Sin sumby para obtener estructura base
+    );
+  }
+  
+  // Si aún no hay headers, intentar sin filtros para obtener la estructura base
+  if (!isset($array_headers['headers']) || empty($array_headers['headers'])) {
+    $array_headers = class_Recordset(
+      $row_reports_info['ConnectionId'], 
+      $row_reports_info['Query'], 
+      null,  // Sin filtros
+      null,  // Sin groupby
+      1,  // Solo 1 fila para obtener headers (evita overload)
+      null, 
+      null, 
+      null  // Sin sumby
+    );
+  }
+  
+  // Si aún no hay headers, intentar obtenerlos desde data.php haciendo una petición inicial
+  // Esto puede pasar si la consulta no devuelve ningún resultado y no hay forma de obtener la estructura
+  if (!isset($array_headers['headers']) || empty($array_headers['headers'])) {
+    // Hacer una consulta mínima solo para obtener estructura
+    // Usar LIMIT 0 si es posible, o simplemente ejecutar la consulta base
+    $temp_query = $row_reports_info['Query'];
+    // Intentar agregar LIMIT 0 al final si no existe
+    if (stripos($temp_query, 'LIMIT') === false) {
+      $temp_query = rtrim(trim($temp_query), ';') . ' LIMIT 0';
+    }
+    $array_headers = class_Recordset(
+      $row_reports_info['ConnectionId'], 
+      $temp_query, 
+      null, 
+      null, 
+      0,  // 0 filas, solo estructura
+      null, 
+      null, 
+      null
+    );
+  }
+  
   // Calcular tiempo de ejecución
   $query_execution_end = microtime(true);
   $query_execution_time = $query_execution_end - $query_execution_start;
   $query_execution_time_formatted = number_format($query_execution_time, 3) . ' segundos';
   
-  // Inicializar array_info con valores por defecto si no existe
-  if (isset($array_reports['info']) && is_array($array_reports['info'])) {
-    $array_info = $array_reports['info'];
-  } else {
-    $array_info = ['total_rows' => 0, 'page_rows' => 0];
+  // Inicializar array_reports - DataTables obtendrá los datos desde data.php
+  $array_reports = array(
+    'headers' => isset($array_headers['headers']) && is_array($array_headers['headers']) ? $array_headers['headers'] : [],
+    'data' => [], // Vacío, DataTables lo llenará
+    'info' => array('total_rows' => 0, 'page_rows' => 0)
+  );
+  
+  // Si hay error en la consulta de headers, preservarlo
+  if (isset($array_headers['error']) && !empty($array_headers['error'])) {
+    $array_reports['error'] = $array_headers['error'];
   }
+  
+  // Inicializar array_info con valores por defecto
+  $array_info = array('total_rows' => 0, 'page_rows' => 0);
   
   // Asegurar que array_headers tenga la estructura correcta
   if (!isset($array_headers['headers']) || !is_array($array_headers['headers'])) {
     $array_headers['headers'] = [];
   }
-  
-  // Asegurar que array_reports tenga la estructura correcta
-  if (!isset($array_reports['data']) || !is_array($array_reports['data'])) {
-    $array_reports['data'] = [];
-  } 
 }
 
 //parent recordsets

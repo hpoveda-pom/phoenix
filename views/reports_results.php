@@ -48,7 +48,19 @@ if ($action == "update" && $form_id == 'editor_query') {
           <div class="accordion-collapse collapse show" id="collapseOne" aria-labelledby="headingOne" data-bs-parent="#accordionExample">
             <div class="accordion-body pt-0">
               <!-- Table of Results -->
-              <?php if(isset($array_reports['data']) && is_array($array_reports['data']) && !empty($array_reports['data'])){ ?>
+              <?php 
+              // Para reportes tipo 1, siempre mostrar la tabla (DataTables obtendrá los datos desde data.php)
+              // Ya no verificamos si hay datos porque DataTables los obtendrá dinámicamente
+              if (isset($row_reports_info['TypeId']) && $row_reports_info['TypeId'] == 1) { 
+                // Verificar si hay error primero
+                if (isset($array_reports['error']) && $array_reports['error']) { ?>
+                  <div class="alert alert-subtle-danger d-flex align-items-center" role="alert">
+                    <span class="fas fa-times-circle text-danger fs-5 me-3"></span>
+                    <b>Query Error: </b>
+                    <p class="mb-0 flex-1"> <?php echo $array_reports['error']; ?></p>
+                    <?php class_cruds('rollback'); ?>
+                  </div>
+                <?php } else { ?>
               <div id="tableExample">
                 <div class="table-responsive">
                   <?php if ($row_reports_info['Status'] == 0) { ?>
@@ -78,7 +90,8 @@ if ($action == "update" && $form_id == 'editor_query') {
                   ?>
                 </div>
             </div>
-          <?php }elseif(isset($array_reports['error']) && $array_reports['error']){ ?>
+                <?php } ?>
+              <?php } elseif(isset($array_reports['error']) && $array_reports['error']){ ?>
           <div class="alert alert-subtle-danger d-flex align-items-center" role="alert">
             <span class="fas fa-times-circle text-danger fs-5 me-3"></span>
             <b>Query Error: </b>
@@ -314,32 +327,55 @@ if (isset($array_reports['headers']) && is_array($array_reports['headers']) && !
     $datatable_headers = $array_headers['headers'];
 }
 
-if ($datatable_headers && !empty($datatable_headers) && isset($row_reports_info['ReportsId'])): ?>
+// Inicializar DataTables si hay ReportsId (siempre inicializar, incluso sin headers)
+if (isset($row_reports_info['ReportsId'])): ?>
 $(document).ready(function() {
-    var columnCount = <?php echo count($datatable_headers); ?>;
-    var headers = <?php echo json_encode($datatable_headers); ?>;
+    console.log('Inicializando DataTables...');
+    
+    // Verificar que la tabla exista
+    if ($('#reportsTable').length === 0) {
+        console.error('Error: La tabla #reportsTable no existe en el DOM');
+        return;
+    }
+    
+    var columnCount = <?php echo $datatable_headers ? count($datatable_headers) : 0; ?>;
+    var headers = <?php echo $datatable_headers ? json_encode($datatable_headers) : '[]'; ?>;
     var columns = [];
-    for (var i = 0; i < columnCount; i++) {
-        var columnConfig = {
-            "data": i,
+    console.log('Headers iniciales:', headers, 'Count:', columnCount);
+    
+    // Configurar columnas si hay headers
+    if (columnCount > 0 && headers.length > 0) {
+        for (var i = 0; i < columnCount; i++) {
+            var columnConfig = {
+                "data": i,
+                "orderable": true,
+                "defaultContent": ""
+            };
+            
+            // Si la columna es "Cantidad", centrarla y ajustar ancho, y permitir HTML
+            if (headers[i] && headers[i].toLowerCase() === 'cantidad') {
+                columnConfig.className = "text-center";
+                columnConfig.width = "auto";
+                columnConfig.render = function(data, type, row) {
+                    // Si el dato contiene HTML (span con cantidad-clickable), devolverlo tal cual
+                    if (type === 'display' && typeof data === 'string' && data.indexOf('<span') !== -1) {
+                        return data;
+                    }
+                    return data;
+                };
+            }
+            
+            columns.push(columnConfig);
+        }
+    }
+    // Si no hay headers, DataTables los detectará desde la primera respuesta
+    // pero necesitamos al menos una columna para inicializar
+    if (columns.length === 0) {
+        columns = [{
+            "data": 0,
             "orderable": true,
             "defaultContent": ""
-        };
-        
-        // Si la columna es "Cantidad", centrarla y ajustar ancho, y permitir HTML
-        if (headers[i] && headers[i].toLowerCase() === 'cantidad') {
-            columnConfig.className = "text-center";
-            columnConfig.width = "auto";
-            columnConfig.render = function(data, type, row) {
-                // Si el dato contiene HTML (span con cantidad-clickable), devolverlo tal cual
-                if (type === 'display' && typeof data === 'string' && data.indexOf('<span') !== -1) {
-                    return data;
-                }
-                return data;
-            };
-        }
-        
-        columns.push(columnConfig);
+        }];
     }
     
     var reportsTable = $('#reportsTable').DataTable({
@@ -403,48 +439,51 @@ $(document).ready(function() {
         "scrollX": false,
         "autoWidth": true,
         "dom": 'rtip',
-        "columns": columns,
+        "columns": columns.length > 0 ? columns : undefined, // Si no hay columnas, DataTables las detectará automáticamente
         "columnDefs": (function() {
             var columnDefs = [];
             
-            // Encontrar índices de columnas especiales
-            var cantidadIndex = -1;
-            var sumaIndices = [];
-            
-            for (var i = 0; i < headers.length; i++) {
-                var header = headers[i] ? headers[i].toLowerCase() : '';
+            // Solo aplicar columnDefs si hay headers
+            if (headers.length > 0) {
+                // Encontrar índices de columnas especiales
+                var cantidadIndex = -1;
+                var sumaIndices = [];
                 
-                // Columna "Cantidad" - centrada
-                if (header === 'cantidad') {
-                    cantidadIndex = i;
+                for (var i = 0; i < headers.length; i++) {
+                    var header = headers[i] ? headers[i].toLowerCase() : '';
+                    
+                    // Columna "Cantidad" - centrada
+                    if (header === 'cantidad') {
+                        cantidadIndex = i;
+                    }
+                    
+                    // Columnas de montos (Suma (*) o campos con monto/precio/total/importe) - alineadas a la derecha
+                    if (header.indexOf('suma (') === 0 || 
+                        header.indexOf('suma_') === 0 ||
+                        header.indexOf('monto') !== -1 || 
+                        header.indexOf('precio') !== -1 ||
+                        header.indexOf('total') !== -1 ||
+                        header.indexOf('importe') !== -1) {
+                        sumaIndices.push(i);
+                    }
                 }
                 
-                // Columnas de montos (Suma (*) o campos con monto/precio/total/importe) - alineadas a la derecha
-                if (header.indexOf('suma (') === 0 || 
-                    header.indexOf('suma_') === 0 ||
-                    header.indexOf('monto') !== -1 || 
-                    header.indexOf('precio') !== -1 ||
-                    header.indexOf('total') !== -1 ||
-                    header.indexOf('importe') !== -1) {
-                    sumaIndices.push(i);
+                // Aplicar configuración a "Cantidad"
+                if (cantidadIndex >= 0) {
+                    columnDefs.push({
+                        "targets": [cantidadIndex],
+                        "width": "auto",
+                        "className": "text-center"
+                    });
                 }
-            }
-            
-            // Aplicar configuración a "Cantidad"
-            if (cantidadIndex >= 0) {
-                columnDefs.push({
-                    "targets": [cantidadIndex],
-                    "width": "auto",
-                    "className": "text-center"
-                });
-            }
-            
-            // Aplicar configuración a columnas de montos
-            if (sumaIndices.length > 0) {
-                columnDefs.push({
-                    "targets": sumaIndices,
-                    "className": "text-end"
-                });
+                
+                // Aplicar configuración a columnas de montos
+                if (sumaIndices.length > 0) {
+                    columnDefs.push({
+                        "targets": sumaIndices,
+                        "className": "text-end"
+                    });
+                }
             }
             
             return columnDefs;
