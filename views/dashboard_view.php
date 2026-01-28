@@ -66,11 +66,31 @@
 
       ?>
       <div class="<?php echo $LayoutGridClass; ?> dashboard-widget" data-widget-id="<?php echo $row_dashbboard['ReportsId']; ?>" id="widget-<?php echo $row_dashbboard['ReportsId']; ?>">
-        <div class="d-flex flex-wrap justify-content-between align-items-center dashboard-widget-header" style="cursor: move;">
+        <div class="d-flex flex-nowrap justify-content-between align-items-center dashboard-widget-header" style="cursor: move;">
           <h6 class="mb-0 dashboard-widget-title" title="<?php echo htmlspecialchars($row_dashbboard['ReportsId'] . '. ' . $title); ?>">
             <i class="fas fa-grip-vertical text-muted me-2"></i>
             <span class="widget-title-text"><?php echo $row_dashbboard['ReportsId']; ?>. <?php echo htmlspecialchars($title); ?></span>
           </h6>
+          <?php if ($is_admin): ?>
+          <button class="btn btn-sm btn-link text-muted p-1 widget-edit-btn" 
+                  data-widget-id="<?php echo $row_dashbboard['ReportsId']; ?>"
+                  data-bs-toggle="modal" 
+                  data-bs-target="#widgetEditModal"
+                  title="Editar widget"
+                  style="opacity: 0.5; transition: opacity 0.2s;"
+                  onclick="editWidget(<?php echo htmlspecialchars(json_encode([
+                    'ReportsId' => $row_dashbboard['ReportsId'],
+                    'Title' => $row_dashbboard['Title'],
+                    'Description' => $row_dashbboard['Description'] ?? '',
+                    'Query' => $row_dashbboard['Query'] ?? '',
+                    'LayoutGridClass' => $row_dashbboard['LayoutGridClass'] ?? 'col',
+                    'Order' => $row_dashbboard['Order'] ?? 0,
+                    'Status' => $row_dashbboard['Status'] ?? 1,
+                    'ConnectionId' => $row_dashbboard['ConnectionId'] ?? 0
+                  ])); ?>)">
+            <i class="fas fa-edit"></i>
+          </button>
+          <?php endif; ?>
         </div>
         <div class="card p-2 mt-3 shadow-sm">
           <?php if ($array_parent['data']) { ?>
@@ -482,9 +502,60 @@
           collapseText.classList.remove('d-none');
         }
       });
-    });
-  });
-  </script>
+     });
+   });
+
+   // Función para editar widget
+   function editWidget(widgetData) {
+     document.getElementById('edit_widget_id').value = widgetData.ReportsId;
+     document.getElementById('edit_widget_title').value = widgetData.Title || '';
+     document.getElementById('edit_widget_description').value = widgetData.Description || '';
+     document.getElementById('edit_widget_query').value = widgetData.Query || '';
+     document.getElementById('edit_widget_layout').value = widgetData.LayoutGridClass || 'col';
+     document.getElementById('edit_widget_order').value = widgetData.Order || 0;
+     document.getElementById('edit_widget_status').value = widgetData.Status || 1;
+     document.getElementById('edit_widget_connection').value = widgetData.ConnectionId || 0;
+   }
+
+   // Manejar envío del formulario de edición
+   document.getElementById('widgetEditForm').addEventListener('submit', function(e) {
+     e.preventDefault();
+     
+     const formData = new FormData(this);
+     formData.append('action', 'update_widget');
+     
+     const submitBtn = this.querySelector('button[type="submit"]');
+     const originalText = submitBtn.innerHTML;
+     submitBtn.disabled = true;
+     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+     
+     fetch('controllers/widget_update.php', {
+       method: 'POST',
+       body: formData
+     })
+     .then(response => response.json())
+     .then(data => {
+       if (data.success) {
+         // Cerrar modal
+         const modal = bootstrap.Modal.getInstance(document.getElementById('widgetEditModal'));
+         modal.hide();
+         
+         // Recargar la página para ver los cambios
+         location.reload();
+       } else {
+         alert('Error: ' + (data.message || 'No se pudo actualizar el widget'));
+         submitBtn.disabled = false;
+         submitBtn.innerHTML = originalText;
+       }
+     })
+     .catch(error => {
+       console.error('Error:', error);
+       alert('Error al guardar los cambios');
+       submitBtn.disabled = false;
+       submitBtn.innerHTML = originalText;
+     });
+   });
+   </script>
 
   <style>
   .sortable-ghost {
@@ -506,9 +577,13 @@
 
   .dashboard-widget-header {
     overflow: hidden;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
   }
 
   .dashboard-widget-title {
+    display: flex;
+    align-items: center;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -518,6 +593,8 @@
 
   .widget-title-text {
     display: inline-block;
+    min-width: 0;
+    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -813,5 +890,107 @@
   .widget-content {
     position: relative;
   }
+
+  .widget-edit-btn {
+    opacity: 0.3;
+    transition: opacity 0.2s ease;
+  }
+
+  .dashboard-widget-header:hover .widget-edit-btn {
+    opacity: 0.7;
+  }
+
+  .widget-edit-btn:hover {
+    opacity: 1 !important;
+  }
   </style>
+
+  <!-- Modal para editar widget -->
+  <?php if (isset($is_admin) && $is_admin): ?>
+  <div class="modal fade" id="widgetEditModal" tabindex="-1" aria-labelledby="widgetEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="widgetEditModalLabel">
+            <i class="fas fa-edit me-2"></i>Editar Widget
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form id="widgetEditForm">
+          <div class="modal-body">
+            <input type="hidden" id="edit_widget_id" name="widget_id" value="">
+            
+            <div class="mb-3">
+              <label for="edit_widget_title" class="form-label">Título <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="edit_widget_title" name="title" required>
+            </div>
+
+            <div class="mb-3">
+              <label for="edit_widget_description" class="form-label">Descripción</label>
+              <textarea class="form-control" id="edit_widget_description" name="description" rows="2"></textarea>
+            </div>
+
+            <div class="mb-3">
+              <label for="edit_widget_connection" class="form-label">Conexión</label>
+              <select class="form-select" id="edit_widget_connection" name="connection_id">
+                <option value="0">Seleccionar conexión...</option>
+                <?php
+                // Obtener conexiones disponibles
+                $query_connections = "SELECT ConnectionId, Title FROM connections WHERE Status = 1 ORDER BY Title ASC";
+                $connections_result = class_Recordset(1, $query_connections, null, null, null);
+                $connections = $connections_result['data'] ?? [];
+                foreach ($connections as $conn):
+                ?>
+                <option value="<?php echo $conn['ConnectionId']; ?>"><?php echo htmlspecialchars($conn['Title']); ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label for="edit_widget_query" class="form-label">SQL Query <span class="text-danger">*</span></label>
+              <textarea class="form-control font-monospace" id="edit_widget_query" name="query" rows="6" required style="font-size: 0.875rem;"></textarea>
+              <small class="form-text text-muted">Consulta SQL que se ejecutará para obtener los datos del widget.</small>
+            </div>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label for="edit_widget_layout" class="form-label">Diseño (Layout)</label>
+                <select class="form-select" id="edit_widget_layout" name="layout_grid_class">
+                  <option value="col">col (Automático)</option>
+                  <option value="col-12">col-12 (Ancho completo)</option>
+                  <option value="col-6">col-6 (Mitad)</option>
+                  <option value="col-4">col-4 (Un tercio)</option>
+                  <option value="col-3">col-3 (Un cuarto)</option>
+                  <option value="col-md-6">col-md-6 (Mitad en desktop)</option>
+                  <option value="col-md-4">col-md-4 (Un tercio en desktop)</option>
+                  <option value="col-md-3">col-md-3 (Un cuarto en desktop)</option>
+                </select>
+              </div>
+
+              <div class="col-md-3 mb-3">
+                <label for="edit_widget_order" class="form-label">Orden</label>
+                <input type="number" class="form-control" id="edit_widget_order" name="order" value="0" min="0">
+              </div>
+
+              <div class="col-md-3 mb-3">
+                <label for="edit_widget_status" class="form-label">Estado</label>
+                <select class="form-select" id="edit_widget_status" name="status">
+                  <option value="1">Activo</option>
+                  <option value="0">Inactivo</option>
+                  <option value="2">Mantenimiento</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-save me-2"></i>Guardar Cambios
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <?php endif; ?>
 <?php endif; ?>
