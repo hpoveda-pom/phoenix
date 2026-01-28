@@ -1,5 +1,7 @@
 <?php
 if ($array_parent['data']) { ?>
+  <!-- Contenedor arrastrable para widgets -->
+  <div id="dashboard-widgets-container" class="row" data-dashboard-id="<?php echo $row_reports_info['ReportsId']; ?>">
   <?php
   $Limit = null;
   foreach ($array_parent['data'] as $key_dashbboard => $row_dashbboard) {
@@ -65,9 +67,10 @@ $title = preg_replace_callback('/\{(\w+)\}/', function ($matches) {
 
 
     ?>
-    <div class="<?php echo $LayoutGridClass; ?> ">
-      <div class="d-flex flex-wrap justify-content-between align-items-center">
+    <div class="<?php echo $LayoutGridClass; ?> dashboard-widget" data-widget-id="<?php echo $row_dashbboard['ReportsId']; ?>">
+      <div class="d-flex flex-wrap justify-content-between align-items-center dashboard-widget-header" style="cursor: move;">
         <h6 class="mb-0">
+          <i class="fas fa-grip-vertical text-muted me-2"></i>
           <?php echo $row_dashbboard['ReportsId']; ?>. <?php echo $title; ?>
         </h6>
       </div>
@@ -184,4 +187,105 @@ $title = preg_replace_callback('/\{(\w+)\}/', function ($matches) {
 </div>
 </div>
 <?php } ?>
+  </div>
 <?php } ?>
+
+<!-- SortableJS para drag and drop -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const container = document.getElementById('dashboard-widgets-container');
+  if (!container) return;
+  
+  const dashboardId = container.getAttribute('data-dashboard-id');
+  
+  // Inicializar Sortable
+  const sortable = new Sortable(container, {
+    animation: 150,
+    handle: '.dashboard-widget-header', // Solo el header es arrastrable
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    dragClass: 'sortable-drag',
+    onEnd: function(evt) {
+      // Obtener el nuevo orden de los widgets
+      const widgets = [];
+      container.querySelectorAll('.dashboard-widget').forEach(function(widget) {
+        widgets.push(widget.getAttribute('data-widget-id'));
+      });
+      
+      // Enviar el nuevo orden al servidor
+      fetch('controllers/dashboard_reorder.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          dashboard_id: dashboardId,
+          widgets: widgets
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // Mostrar mensaje de éxito (opcional)
+          console.log('Orden actualizado correctamente');
+          // Opcional: mostrar notificación
+          if (typeof showNotification === 'function') {
+            showNotification('Orden actualizado correctamente', 'success');
+          }
+        } else {
+          console.error('Error al actualizar el orden:', data.message);
+          // Revertir el cambio si falla
+          location.reload();
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        // Revertir el cambio si falla
+        location.reload();
+      });
+    }
+  });
+});
+</script>
+
+<style>
+.sortable-ghost {
+  opacity: 0.4;
+  background: #f0f0f0;
+}
+
+.sortable-chosen {
+  cursor: grabbing;
+}
+
+.sortable-drag {
+  opacity: 0.8;
+}
+
+.dashboard-widget {
+  transition: transform 0.2s ease;
+}
+
+.dashboard-widget-header:hover {
+  background-color: rgba(0,0,0,0.02);
+  border-radius: 4px;
+}
+
+.dashboard-widget-header .fa-grip-vertical {
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.dashboard-widget-header:hover .fa-grip-vertical {
+  opacity: 1;
+}
+
+.sortable-ghost .dashboard-widget {
+  opacity: 0.4;
+}
+
+.sortable-chosen .dashboard-widget-header {
+  cursor: grabbing !important;
+}
+</style>

@@ -19,7 +19,7 @@
                   $script_name = 'reports.php';
                   break;
                   case 2:
-                  $script_name = 'reports.php';
+                  $script_name = 'dashboards.php';
                   break;
                   case 3:
                   $script_name = 'tools.php';
