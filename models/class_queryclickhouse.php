@@ -12,6 +12,10 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
         ];
     }
 
+    // Normalizar la query base: remover punto y coma final y espacios en blanco
+    // Esto evita errores del tipo "Syntax error ... ;) AS tb" cuando se usa como subconsulta
+    $Query = rtrim(trim($Query), ";\r\n\t ");
+
     $i = 0;
     if ($array_groupby) {
         $total_groupby = count($array_groupby);
@@ -315,6 +319,9 @@ function class_queryClickHouse($ConnectionId, $Query, $ArrayFilter, $array_group
             $query_with_where = substr($Query, 0, $insert_pos) . " " . $query_where . " " . substr($Query, $insert_pos);
         }
     }
+    
+    // Asegurar que la query con WHERE tampoco tenga punto y coma final antes de ser usada como subconsulta
+    $query_with_where = rtrim(trim($query_with_where), ";\r\n\t ");
     
     $query = "SELECT tb.* FROM (" . $query_with_where . ") AS tb";
     if (!empty($query_order_by)) {

@@ -212,6 +212,65 @@
               <?php } ?>
             </div>
           </div>
+
+          <?php
+          // Debugger por widget (solo admin + modo debug activo)
+          $widget_debug_enabled = $is_admin && isset($_SESSION['debug_mode']) && $_SESSION['debug_mode'];
+          if ($widget_debug_enabled):
+            $debug_query = $array_reports['debug_query'] ?? null;
+            $debug_query_with_where = $array_reports['debug_query_with_where'] ?? null;
+            $debug_filters = $array_reports['debug_filters'] ?? [];
+            $debug_total_rows = $array_info['total_rows'] ?? (isset($array_reports['info']['total_rows']) ? $array_reports['info']['total_rows'] : null);
+          ?>
+          <div class="px-2 pb-2">
+            <button class="btn btn-xs btn-outline-secondary text-muted widget-debug-toggle"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#widgetDebug-<?php echo $row_dashbboard['ReportsId']; ?>"
+                    aria-expanded="false"
+                    aria-controls="widgetDebug-<?php echo $row_dashbboard['ReportsId']; ?>"
+                    style="font-size: 0.7rem; padding: 0.15rem 0.4rem;">
+              <i class="fas fa-bug me-1"></i>Debug
+            </button>
+            <div class="collapse mt-2 small" id="widgetDebug-<?php echo $row_dashbboard['ReportsId']; ?>">
+              <div class="border rounded p-2 bg-light-subtle">
+                <div class="mb-1">
+                  <strong>ID:</strong> <?php echo $row_dashbboard['ReportsId']; ?>,
+                  <strong>Filas:</strong> <?php echo $debug_total_rows !== null ? intval($debug_total_rows) : 'N/D'; ?>,
+                  <strong>Error:</strong> <?php echo $has_error ? 'Sí' : 'No'; ?>
+                </div>
+                <?php if ($has_error && !empty($error_message)): ?>
+                  <div class="text-danger mb-1" style="font-size: 0.75rem;">
+                    <?php echo htmlspecialchars($error_message); ?>
+                  </div>
+                <?php endif; ?>
+                <?php if ($debug_query_with_where): ?>
+                  <details class="mb-1">
+                    <summary class="cursor-pointer">Subquery con filtros</summary>
+                    <pre class="mt-1 mb-0 p-2 bg-body border rounded" style="max-height: 200px; overflow-y: auto; font-size: 0.7rem; white-space: pre-wrap; word-wrap: break-word;"><?php echo htmlspecialchars($debug_query_with_where); ?></pre>
+                  </details>
+                <?php endif; ?>
+                <?php if ($debug_query): ?>
+                  <details class="mb-1">
+                    <summary class="cursor-pointer">Query final ejecutada</summary>
+                    <pre class="mt-1 mb-0 p-2 bg-body border rounded" style="max-height: 200px; overflow-y: auto; font-size: 0.7rem; white-space: pre-wrap; word-wrap: break-word;"><?php echo htmlspecialchars($debug_query); ?></pre>
+                  </details>
+                <?php endif; ?>
+                <?php if (!empty($debug_filters) && is_array($debug_filters)): ?>
+                  <details class="mb-0">
+                    <summary class="cursor-pointer">Mensajes de debug (<?php echo count($debug_filters); ?>)</summary>
+                    <ul class="mt-1 mb-0 ps-3" style="font-size: 0.7rem; max-height: 150px; overflow-y: auto;">
+                      <?php foreach ($debug_filters as $debug_msg): ?>
+                        <li><?php echo htmlspecialchars($debug_msg); ?></li>
+                      <?php endforeach; ?>
+                    </ul>
+                  </details>
+                <?php endif; ?>
+              </div>
+            </div>
+          </div>
+          <?php endif; ?>
+
           <div class="widget-footer" id="widget-footer-<?php echo $row_dashbboard['ReportsId']; ?>">
             <div class="d-flex justify-content-between align-items-center">
               <div class="d-flex align-items-center" style="gap: 0.75rem;">
