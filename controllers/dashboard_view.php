@@ -73,8 +73,14 @@ if (!$row_reports_info) {
     AND a.Status = 1 
     ORDER BY a.Order ASC
     ";
+    
+    // Capturar tiempo de inicio
+    $query_start = microtime(true);
     $array_parent = class_Recordset(1, $query_parent, null, null, NULL);
+    $query_end = microtime(true);
+    $query_time = $query_end - $query_start;
     $array_info = $array_parent['info'];
+    $array_info['execution_time'] = $query_time;
   }
 }
 

@@ -62,11 +62,12 @@ try {
         exit;
     }
     
-    // Ejecutar query del widget
+    // Ejecutar query del widget y medir tiempo
     $filter_results = [];
     $groupby_results = [];
     $Limit = null;
     
+    $execution_start = microtime(true);
     $array_reports = class_Recordset(
         $widget_info['ConnectionId'], 
         $widget_info['Query'], 
@@ -74,6 +75,7 @@ try {
         $groupby_results, 
         $Limit
     );
+    $execution_time = microtime(true) - $execution_start;
     
     if (isset($array_reports['error']) && !empty($array_reports['error'])) {
         echo json_encode(['success' => false, 'message' => 'Error al ejecutar query: ' . $array_reports['error']]);
@@ -148,7 +150,9 @@ try {
     echo json_encode([
         'success' => true,
         'data' => $formatted_data,
-        'lastExecution' => $row_sync['LastExecution'] ?? 'N/A',
+        'lastExecution' => date('Y-m-d H:i:s'),
+        'lastExecutionTimestamp' => time(),
+        'executionTime' => $execution_time,
         'totalRows' => count($formatted_data['rows'])
     ]);
     

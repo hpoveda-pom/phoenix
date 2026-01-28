@@ -8,13 +8,19 @@
   
   <?php if ($array_parent['data']) { ?>
     <!-- Contenedor arrastrable para widgets -->
-    <div id="dashboard-widgets-container" class="row" data-dashboard-id="<?php echo $row_reports_info['ReportsId']; ?>">
+    <div id="dashboard-widgets-container" class="row g-3" data-dashboard-id="<?php echo $row_reports_info['ReportsId']; ?>">
     <?php
     $Limit = null;
     foreach ($array_parent['data'] as $key_dashbboard => $row_dashbboard) {
 
+      // Capturar tiempo de ejecución del widget
+      $widget_start = microtime(true);
       $array_reports  = class_Recordset($row_dashbboard['ConnectionId'], $row_dashbboard['Query'], $filter_results, $groupby_results, $Limit);
+      $widget_end = microtime(true);
+      $widget_execution_time = $widget_end - $widget_start;
+      
       $array_info     = $array_reports['info'];
+      $array_info['execution_time'] = $widget_execution_time;
       $row_sync       = class_getLastExecution($row_dashbboard['LastExecution']);
 
       $LayoutGridClass = "col";
@@ -58,12 +64,6 @@
             <i class="fas fa-grip-vertical text-muted me-2"></i>
             <?php echo $row_dashbboard['ReportsId']; ?>. <?php echo $title; ?>
           </h6>
-          <button class="btn btn-sm btn-outline-secondary widget-refresh-btn" 
-                  data-widget-id="<?php echo $row_dashbboard['ReportsId']; ?>"
-                  data-dashboard-id="<?php echo $row_reports_info['ReportsId']; ?>"
-                  title="Refrescar datos">
-            <i class="fas fa-sync-alt"></i>
-          </button>
         </div>
         <div class="card p-2 mt-3 shadow-sm">
           <?php if ($array_parent['data']) { ?>
@@ -144,36 +144,30 @@
               <?php } ?>
             </div>
           </div>
-          <div class="row align-items-center">
-            <div class="col-auto">
-              <?php if ($row_dashbboard['SyncStatus']==2) { ?>
-                <button class="btn p-0 m-1 d-md-block" 
-                data-bs-toggle="tooltip" 
-                data-bs-placement="top" 
-                title="<b>Sincronizando: </b> Los datos del reporte están siendo actualizados. Los nuevos resultados estarán disponibles en breve. Los datos mostrados actualmente son confiables."
-                data-bs-html="true">
-                <i class="fas fa-sync fa-spin text-secondary-light fs-7"></i>
-                </button>
-              <?php } elseif ($row_dashbboard['Status']==2) { ?>
-                <button class="btn p-0 m-1 d-md-block" 
-                data-bs-toggle="tooltip" 
-                data-bs-placement="top" 
-                title="<b>Adevertencia: </b> Este reporte está actualmente en mantenimiento, por lo que los datos mostrados podrían no ser precisos. Por favor, espere a que el mantenimiento finalice antes de tomar decisiones basadas en esta información." 
-                data-bs-html="true">
-                <i class="fas fa-exclamation-triangle text-warning fs-7"></i>
-                </button>
-              <?php } elseif ($row_dashbboard['Description']) { ?>
-                <button class="btn p-0 m-1 d-md-block" 
-                data-bs-toggle="tooltip" 
-                data-bs-placement="top" 
-                title="<b>Propósito</b>: <?php echo $row_dashbboard['Description']; ?>" 
-                data-bs-html="true">
-                <i class="fas fa-info-circle text-secondary-light fs-7"></i>
-                </button>
-              <?php } ?>
-            </div>
-            <div class="col text-end">
-              <small class="widget-last-execution" id="widget-last-execution-<?php echo $row_dashbboard['ReportsId']; ?>"><?php echo $row_sync['LastExecution']; ?></small>
+          <div class="widget-footer" id="widget-footer-<?php echo $row_dashbboard['ReportsId']; ?>">
+            <div class="d-flex justify-content-between align-items-center">
+              <div class="d-flex align-items-center" style="gap: 0.75rem;">
+                <?php 
+                // Calcular tiempo de ejecución
+                $execution_time = isset($array_info['execution_time']) ? $array_info['execution_time'] : null;
+                ?>
+                <?php if ($execution_time): ?>
+                  <small class="text-muted widget-execution-time" id="widget-execution-time-<?php echo $row_dashbboard['ReportsId']; ?>">
+                    <i class="fas fa-clock me-1"></i>
+                    <span><?php echo number_format($execution_time, 3); ?>s</span>
+                  </small>
+                <?php endif; ?>
+                <small class="text-muted">
+                  <i class="fas fa-sync-alt me-1"></i>
+                  Reporte en tiempo real
+                </small>
+              </div>
+              <button class="btn p-0 border-0 bg-transparent widget-refresh-btn" 
+                      data-widget-id="<?php echo $row_dashbboard['ReportsId']; ?>"
+                      data-dashboard-id="<?php echo $row_reports_info['ReportsId']; ?>"
+                      title="Refrescar datos">
+                <i class="fas fa-sync-alt text-muted"></i>
+              </button>
             </div>
           </div>
         </div>
@@ -288,9 +282,26 @@
           // Actualizar contenido de la tabla
           updateWidgetContent(widgetId, data.data);
           
-          // Actualizar última ejecución
+          // Actualizar última ejecución y tiempo de ejecución
           if (lastExecution && data.lastExecution) {
-            lastExecution.textContent = data.lastExecution;
+            const lastExecText = lastExecution.querySelector('.last-execution-text');
+            if (lastExecText) {
+              lastExecText.textContent = data.lastExecution;
+              lastExecText.setAttribute('data-timestamp', data.lastExecutionTimestamp || Math.floor(Date.now() / 1000));
+            }
+            updateTimeAgo(widgetId);
+          }
+          
+          // Actualizar tiempo de ejecución
+          const execTimeEl = document.getElementById('widget-execution-time-' + widgetId);
+          if (execTimeEl && data.executionTime !== undefined) {
+            const timeSpan = execTimeEl.querySelector('span');
+            if (timeSpan) {
+              timeSpan.textContent = parseFloat(data.executionTime).toFixed(3) + 's';
+            } else {
+              // Si no existe el elemento, crearlo
+              execTimeEl.innerHTML = '<i class="fas fa-clock me-1"></i><span>' + parseFloat(data.executionTime).toFixed(3) + 's</span>';
+            }
           }
         } else {
           // Mostrar error
@@ -360,6 +371,50 @@
         tfoot.appendChild(tr);
       }
     }
+    
+    // Función para actualizar "hace X tiempo"
+    function updateTimeAgo(widgetId) {
+      const lastExecText = document.querySelector('#widget-last-execution-' + widgetId + ' .last-execution-text');
+      const timeAgoEl = document.getElementById('widget-time-ago-' + widgetId);
+      
+      if (!lastExecText || !timeAgoEl) return;
+      
+      const timestamp = parseInt(lastExecText.getAttribute('data-timestamp'));
+      if (!timestamp) return;
+      
+      const now = Math.floor(Date.now() / 1000);
+      const diff = now - timestamp;
+      
+      let timeAgo = '';
+      if (diff < 60) {
+        timeAgo = 'hace ' + diff + 's';
+      } else if (diff < 3600) {
+        const minutes = Math.floor(diff / 60);
+        timeAgo = 'hace ' + minutes + 'm';
+      } else if (diff < 86400) {
+        const hours = Math.floor(diff / 3600);
+        timeAgo = 'hace ' + hours + 'h';
+      } else {
+        const days = Math.floor(diff / 86400);
+        timeAgo = 'hace ' + days + 'd';
+      }
+      
+      timeAgoEl.textContent = '(' + timeAgo + ')';
+    }
+    
+    // Actualizar "hace X tiempo" para todos los widgets al cargar
+    document.querySelectorAll('.widget-last-execution').forEach(function(el) {
+      const widgetId = el.id.replace('widget-last-execution-', '');
+      updateTimeAgo(widgetId);
+    });
+    
+    // Actualizar cada minuto
+    setInterval(function() {
+      document.querySelectorAll('.widget-last-execution').forEach(function(el) {
+        const widgetId = el.id.replace('widget-last-execution-', '');
+        updateTimeAgo(widgetId);
+      });
+    }, 60000); // Cada minuto
   });
   </script>
 
@@ -401,6 +456,87 @@
 
   .sortable-chosen .dashboard-widget-header {
     cursor: grabbing !important;
+  }
+  
+  
+  .widget-footer {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.25rem !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    border-top: 1px solid rgba(0,0,0,0.1) !important;
+    margin-top: 0.5rem !important;
+  }
+  
+  .widget-footer small {
+    font-size: 0.75rem !important;
+    color: #6c757d !important;
+  }
+  
+  .widget-footer .widget-refresh-btn {
+    padding: 0 !important;
+    opacity: 0.6 !important;
+    transition: opacity 0.2s ease !important;
+  }
+  
+  .widget-footer .widget-refresh-btn:hover:not(:disabled) {
+    opacity: 1 !important;
+  }
+  
+  .widget-footer .widget-refresh-btn i {
+    font-size: 0.75rem !important;
+  }
+  
+  .widget-footer-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .widget-footer-actions {
+    opacity: 0.4;
+    transition: opacity 0.2s ease;
+  }
+  
+  .dashboard-widget:hover .widget-footer-actions {
+    opacity: 0.7;
+  }
+  
+  .widget-refresh-btn {
+    padding: 0.15rem 0.3rem;
+    transition: all 0.2s ease;
+  }
+  
+  .widget-refresh-btn:hover:not(:disabled) {
+    opacity: 1 !important;
+    transform: rotate(90deg);
+  }
+  
+  .widget-refresh-btn:disabled {
+    opacity: 0.3 !important;
+    cursor: not-allowed;
+  }
+  
+  .widget-refresh-btn i.fa-spin {
+    animation: fa-spin 1s infinite linear;
+  }
+  
+  .widget-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    border-radius: 0.25rem;
+  }
+  
+  .widget-content {
+    position: relative;
   }
   </style>
 <?php endif; ?>
