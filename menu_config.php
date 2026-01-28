@@ -299,7 +299,8 @@ if ($action === 'edit' && $id > 0) {
 
 // Obtener listas
 $sections = [];
-$result = $conn_phoenix->query("SELECT * FROM category WHERE ParentId IS NULL AND IdType = 1 ORDER BY `Order` ASC, Title ASC");
+// Listar secciones del más nuevo al más viejo por defecto
+$result = $conn_phoenix->query("SELECT * FROM category WHERE ParentId IS NULL AND IdType = 1 ORDER BY CategoryId DESC");
 if ($result) {
     while ($row = $result->fetch_assoc()) {
         $sections[] = $row;
@@ -307,7 +308,8 @@ if ($result) {
 }
 
 $groups = [];
-$result = $conn_phoenix->query("SELECT c.*, p.Title as SectionTitle FROM category c LEFT JOIN category p ON p.CategoryId = c.ParentId WHERE c.ParentId IS NOT NULL AND c.IdType = 1 ORDER BY c.`Order` ASC, c.Title ASC");
+// Listar grupos del más nuevo al más viejo por defecto
+$result = $conn_phoenix->query("SELECT c.*, p.Title as SectionTitle FROM category c LEFT JOIN category p ON p.CategoryId = c.ParentId WHERE c.ParentId IS NOT NULL AND c.IdType = 1 ORDER BY c.CategoryId DESC");
 if ($result) {
     while ($row = $result->fetch_assoc()) {
         $groups[] = $row;
@@ -315,7 +317,8 @@ if ($result) {
 }
 
 $items = [];
-$result = $conn_phoenix->query("SELECT r.*, c.Title as CategoryTitle, p.Title as SectionTitle FROM reports r LEFT JOIN category c ON c.CategoryId = r.CategoryId LEFT JOIN category p ON p.CategoryId = c.ParentId WHERE r.UsersId = $UsersId ORDER BY r.`Order` ASC, r.Title ASC");
+// Listar items (reportes) del más nuevo al más viejo por defecto
+$result = $conn_phoenix->query("SELECT r.*, c.Title as CategoryTitle, p.Title as SectionTitle FROM reports r LEFT JOIN category c ON c.CategoryId = r.CategoryId LEFT JOIN category p ON p.CategoryId = c.ParentId WHERE r.UsersId = $UsersId ORDER BY r.ReportsId DESC");
 if ($result) {
     while ($row = $result->fetch_assoc()) {
         $items[] = $row;
@@ -324,11 +327,24 @@ if ($result) {
 
 // Obtener todas las categorías para select (secciones + grupos)
 $all_categories = [];
-$result = $conn_phoenix->query("SELECT CategoryId, Title, ParentId FROM category WHERE IdType = 1 AND Status = 1 ORDER BY ParentId IS NULL DESC, `Order` ASC, Title ASC");
+// Traer también el título de la sección (padre) para poder mostrar "SECCIÓN / GRUPO"
+$result = $conn_phoenix->query("
+    SELECT c.CategoryId, c.Title, c.ParentId, p.Title AS ParentTitle
+    FROM category c
+    LEFT JOIN category p ON p.CategoryId = c.ParentId
+    WHERE c.IdType = 1 AND c.Status = 1
+    ORDER BY c.ParentId IS NULL DESC, c.`Order` ASC, c.Title ASC
+");
 if ($result) {
     while ($row = $result->fetch_assoc()) {
         $all_categories[] = $row;
     }
+}
+
+// Mapa rápido CategoryId -> datos de categoría (para usar también en la grilla de items)
+$category_map = [];
+foreach ($all_categories as $cat_row) {
+    $category_map[$cat_row['CategoryId']] = $cat_row;
 }
 
 // Obtener conexiones disponibles
@@ -420,14 +436,94 @@ if ($result) {
               <label class="form-label">Categoría (Grupo) <span class="text-danger">*</span></label>
               <select class="form-select" name="category_id" required>
                 <option value="">Seleccione una categoría</option>
-                <?php foreach ($all_categories as $cat): 
-                  $display = $cat['ParentId'] ? '&nbsp;&nbsp;└─ ' : '';
+                <?php 
+                // Detectar si el reporte tiene una sección asignada directamente (sin grupo)
+                $current_category_id = $edit_data ? intval($edit_data['CategoryId']) : 0;
+                $is_section = false;
+                $suggested_group_id = 0;
+                
+                if ($current_category_id > 0) {
+                  // Verificar si el CategoryId actual es una sección (no tiene ParentId)
+                  $check_section = $conn_phoenix->query("SELECT ParentId FROM category WHERE CategoryId = $current_category_id AND IdType = 1");
+                  if ($check_section && $check_section->num_rows > 0) {
+                    $section_row = $check_section->fetch_assoc();
+                    if (empty($section_row['ParentId'])) {
+                      // Es una sección, buscar el primer grupo hijo
+                      $is_section = true;
+                      $first_group = $conn_phoenix->query("SELECT CategoryId FROM category WHERE ParentId = $current_category_id AND IdType = 1 AND Status = 1 ORDER BY `Order` ASC, Title ASC LIMIT 1");
+                      if ($first_group && $first_group->num_rows > 0) {
+                        $group_row = $first_group->fetch_assoc();
+                        $suggested_group_id = intval($group_row['CategoryId']);
+                      }
+                    }
+                  }
+                }
+                
+                // Organizar grupos por sección padre
+                $groups_by_section = [];
+                foreach ($all_categories as $cat) {
+                  // Solo procesar grupos (categorías con ParentId)
+                  if (empty($cat['ParentId'])) {
+                    continue;
+                  }
+                  
+                  $section_id = $cat['ParentId'];
+                  $section_title = $cat['ParentTitle'] ?? 'Sin sección';
+                  
+                  if (!isset($groups_by_section[$section_id])) {
+                    $groups_by_section[$section_id] = [
+                      'title' => $section_title,
+                      'groups' => []
+                    ];
+                  }
+                  
+                  $groups_by_section[$section_id]['groups'][] = $cat;
+                }
+                
+                // Ordenar secciones por título
+                uasort($groups_by_section, function($a, $b) {
+                  return strcmp($a['title'], $b['title']);
+                });
+                
+                // Mostrar grupos agrupados por sección usando optgroup
+                foreach ($groups_by_section as $section_id => $section_data):
+                  // Ordenar grupos dentro de cada sección
+                  usort($section_data['groups'], function($a, $b) {
+                    $order_a = intval($a['Order'] ?? 0);
+                    $order_b = intval($b['Order'] ?? 0);
+                    if ($order_a != $order_b) {
+                      return $order_a <=> $order_b;
+                    }
+                    return strcmp($a['Title'], $b['Title']);
+                  });
                 ?>
-                <option value="<?php echo $cat['CategoryId']; ?>" <?php echo ($edit_data && $edit_data['CategoryId'] == $cat['CategoryId']) ? 'selected' : ''; ?>>
-                  <?php echo $display . htmlspecialchars($cat['Title']); ?>
-                </option>
+                <optgroup label="<?php echo htmlspecialchars($section_data['title']); ?>">
+                  <?php foreach ($section_data['groups'] as $cat): 
+                    // Determinar si está seleccionado
+                    $is_selected = false;
+                    if ($edit_data) {
+                      if ($is_section && $suggested_group_id > 0 && $cat['CategoryId'] == $suggested_group_id) {
+                        // Si el reporte tiene una sección, preseleccionar el primer grupo hijo
+                        $is_selected = true;
+                      } elseif (!$is_section && $edit_data['CategoryId'] == $cat['CategoryId']) {
+                        // Si el reporte tiene un grupo, seleccionarlo normalmente
+                        $is_selected = true;
+                      }
+                    }
+                  ?>
+                  <option value="<?php echo $cat['CategoryId']; ?>" <?php echo $is_selected ? 'selected' : ''; ?>>
+                    <?php echo htmlspecialchars($cat['Title']); ?>
+                  </option>
+                  <?php endforeach; ?>
+                </optgroup>
                 <?php endforeach; ?>
               </select>
+              <?php if ($is_section && $suggested_group_id > 0): ?>
+              <small class="text-warning d-block mt-1">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-alert-triangle" style="display: inline; vertical-align: middle;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                Este reporte tiene una sección asignada. Se ha preseleccionado el primer grupo disponible. Por favor, seleccione el grupo correcto y guarde.
+              </small>
+              <?php endif; ?>
             </div>
             <div class="col-md-6">
               <label class="form-label">Tipo</label>
@@ -583,11 +679,31 @@ if ($result) {
                 <td><?php echo htmlspecialchars($item['SectionTitle'] ?? 'N/A'); ?></td>
                 <?php elseif ($type === 'items'): ?>
                 <td>
-                  <?php 
-                  if (isset($item['SectionTitle']) && $item['SectionTitle']): 
-                    echo htmlspecialchars($item['SectionTitle']) . ' / ';
-                  endif;
-                  echo htmlspecialchars($item['CategoryTitle'] ?? 'N/A'); 
+                  <?php
+                  // Preferir siempre la jerarquía real desde $category_map para mostrar "SECCIÓN / GRUPO"
+                  $catLabel = 'N/A';
+                  if (!empty($item['CategoryId']) && isset($category_map[$item['CategoryId']])) {
+                      $catData = $category_map[$item['CategoryId']];
+                      if (!empty($catData['ParentId']) && !empty($catData['ParentTitle'])) {
+                          $catLabel = $catData['ParentTitle'] . ' / ' . $catData['Title'];
+                      } else {
+                          // Categoría sin padre: solo su título
+                          $catLabel = $catData['Title'];
+                      }
+                  } elseif (isset($item['SectionTitle']) || isset($item['CategoryTitle'])) {
+                      // Fallback a los alias que vienen del SELECT original por compatibilidad
+                      $parts = [];
+                      if (!empty($item['SectionTitle'])) {
+                          $parts[] = $item['SectionTitle'];
+                      }
+                      if (!empty($item['CategoryTitle'])) {
+                          $parts[] = $item['CategoryTitle'];
+                      }
+                      if (!empty($parts)) {
+                          $catLabel = implode(' / ', $parts);
+                      }
+                  }
+                  echo htmlspecialchars($catLabel);
                   ?>
                 </td>
                 <td>
@@ -675,9 +791,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 "sortDescending": ": activar para ordenar la columna de forma descendente"
             }
         },
-        "pageLength": 25,
-        "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
-        "order": [[1, "asc"]], // Ordenar por título por defecto
+    "pageLength": 25,
+    "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
+    // Orden por defecto en todos los list del CRUD: del más nuevo al más viejo por ID
+    "order": [[0, "desc"]],
         "responsive": false,
         "scrollX": false,
         "autoWidth": true,
