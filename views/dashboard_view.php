@@ -60,9 +60,9 @@
       ?>
       <div class="<?php echo $LayoutGridClass; ?> dashboard-widget" data-widget-id="<?php echo $row_dashbboard['ReportsId']; ?>" id="widget-<?php echo $row_dashbboard['ReportsId']; ?>">
         <div class="d-flex flex-wrap justify-content-between align-items-center dashboard-widget-header" style="cursor: move;">
-          <h6 class="mb-0">
+          <h6 class="mb-0 dashboard-widget-title" title="<?php echo htmlspecialchars($row_dashbboard['ReportsId'] . '. ' . $title); ?>">
             <i class="fas fa-grip-vertical text-muted me-2"></i>
-            <?php echo $row_dashbboard['ReportsId']; ?>. <?php echo $title; ?>
+            <span class="widget-title-text"><?php echo $row_dashbboard['ReportsId']; ?>. <?php echo htmlspecialchars($title); ?></span>
           </h6>
         </div>
         <div class="card p-2 mt-3 shadow-sm">
@@ -158,7 +158,7 @@
                   </small>
                 <?php endif; ?>
                 <small class="text-muted">
-                  <i class="fas fa-sync-alt me-1"></i>
+                  <i class="fas fa-circle me-1" style="font-size: 0.4rem; vertical-align: middle;"></i>
                   Reporte en tiempo real
                 </small>
               </div>
@@ -436,6 +436,26 @@
     transition: transform 0.2s ease;
   }
 
+  .dashboard-widget-header {
+    overflow: hidden;
+  }
+
+  .dashboard-widget-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .widget-title-text {
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+
   .dashboard-widget-header:hover {
     background-color: rgba(0,0,0,0.02);
     border-radius: 4px;
@@ -444,6 +464,7 @@
   .dashboard-widget-header .fa-grip-vertical {
     opacity: 0.5;
     transition: opacity 0.2s ease;
+    flex-shrink: 0;
   }
 
   .dashboard-widget-header:hover .fa-grip-vertical {
