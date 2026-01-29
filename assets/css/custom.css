@@ -239,6 +239,29 @@ table.dataTable tbody td.text-center {
   max-width: none;
 }
 
+/* Hover para filas de resultados (reporte principal) */
+#reportsTable tbody tr:hover {
+  background-color: rgba(13, 110, 253, 0.06) !important; /* azul suave */
+  cursor: pointer;
+}
+
+/* Respetar modo oscuro para hover del reporte */
+[data-bs-theme="dark"] #reportsTable tbody tr:hover {
+  background-color: rgba(13, 110, 253, 0.18) !important;
+}
+
+/* Hover para tablas de dashboards (todas las tablas dentro de cards de dashboard) */
+.card .table.table-sm.fs-9 tbody tr:hover,
+.card .table.table-sm tbody tr:hover {
+  background-color: rgba(13, 110, 253, 0.06) !important;
+  cursor: pointer;
+}
+
+[data-bs-theme="dark"] .card .table.table-sm.fs-9 tbody tr:hover,
+[data-bs-theme="dark"] .card .table.table-sm tbody tr:hover {
+  background-color: rgba(13, 110, 253, 0.18) !important;
+}
+
 /* Hacer más tenue y pequeño el texto de información de paginación */
 .dataTables_wrapper .dataTables_info {
   font-size: 0.75rem !important;

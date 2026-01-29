@@ -43,6 +43,14 @@ if ($UsersId) {
 ?>
 
 <body>
+  <?php
+  // Mostrar banner de debug si está activo
+  if (isset($_SESSION['debug_mode']) && $_SESSION['debug_mode'] === true) {
+    echo '<div style="background: #ff9800; color: #fff; padding: 8px 15px; text-align: center; font-weight: bold; font-size: 14px; position: sticky; top: 0; z-index: 9999; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">';
+    echo '🐛 MODO DEBUG ACTIVO - Todos los errores y warnings serán mostrados';
+    echo '</div>';
+  }
+  ?>
   <main class="main" id="top">
     <nav class="navbar navbar-vertical navbar-expand-lg">
       <script>
