@@ -96,6 +96,17 @@ if ($action == "update" && $forms_id == 'cruds_edit') {
   $Order = $Order ?: 0;
   $PipelinesId = $PipelinesId ?: 0;
 
+  // Preservar el Query existente si no se envía uno nuevo
+  // Esto es crítico: si no preservamos el Query, se perderá al actualizar otros campos
+  $Query = isset($row_reports_info['Query']) && $row_reports_info['Query'] !== null ? $row_reports_info['Query'] : '';
+  if (isset($_POST['Query']) && $_POST['Query'] !== '') {
+    $Query = $_POST['Query'];
+  }
+  
+  // Escapar el Query para evitar problemas con comillas en SQL
+  // Usar addslashes para escapar comillas simples y dobles
+  $Query_escaped = addslashes($Query);
+
     $qry_upd_reports = "UPDATE reports a SET
         a.Title = '".$Title."',
         a.Description = '".$Description."',
@@ -104,6 +115,7 @@ if ($action == "update" && $forms_id == 'cruds_edit') {
         a.TypeId = ".$TypeId.",
         a.ParentId = ".$ParentId.",
         a.ConnectionId = ".$ConnectionId.",
+        a.Query = '".$Query_escaped."',
         a.Order = ".$Order.",
         a.PipelinesId = ".$PipelinesId.",
         a.MaskingStatus = ".$MaskingStatus.",
