@@ -3,6 +3,7 @@ require_once('models/class_recordset.php');
 require_once('models/class_connections.php');
 require_once('models/class_querymysqli.php');
 require_once('models/class_connmysqli.php');
+require_once('models/class_reportparams.php');
 
 // Variables globales
 $action = isset($_GET['action']) ? $_GET['action'] : 'list';
@@ -98,6 +99,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stmt) {
                     $stmt->bind_param('ssisissiiiii', $title, $description, $connection_id, $query, $order, $layout_grid_class, $total_axis_x, $total_axis_y, $status, $UsersId, $widget_id_post, $parent_id);
                     if ($stmt->execute()) {
+                        // Limpiar el caché del reporte si se actualizó el query
+                        if (!empty($query)) {
+                            ReportParams::clearCache($widget_id_post);
+                        }
                         $message = 'Widget actualizado exitosamente';
                         $message_type = 'success';
                         $action = 'widgets';

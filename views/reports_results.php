@@ -19,6 +19,9 @@ if ($action == "update" && $form_id == 'editor_query') {
   $qry_upd_reports = 'UPDATE reports a SET a.Query = "'.$Query.'", a.UserUpdated = '.$UserUpdated.' WHERE a.ReportsId = '.$ReportsId;
   $upd_reports = class_queryMysqliExe(1, $qry_upd_reports);
 
+  // Limpiar el caché del reporte para que cargue el nuevo query
+  ReportParams::clearCache($ReportsId);
+
   $lastURL = $_SERVER['REQUEST_URI'];
   header("Location: $lastURL");
   exit();

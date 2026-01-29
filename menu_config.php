@@ -1,5 +1,6 @@
 <?php
 require_once('header.php');
+require_once('models/class_reportparams.php');
 
 $type = isset($_GET['type']) ? $_GET['type'] : 'sections';
 $action = isset($_GET['action']) ? $_GET['action'] : 'list';
@@ -125,6 +126,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } else {
                         $stmt->bind_param('ssiiiiisssssiiiiiii', $title, $description, $category_id, $order, $type_id, $connection_id, $query, $query_id_final, $version, $layout_grid_class, $periodic, $convention_status, $masking_status, $status, $total_axis_x_final, $total_axis_y_final, $pipelines_id_final, $UsersId, $item_id);
                         if ($stmt->execute()) {
+                            // Limpiar el caché del reporte si se actualizó el query
+                            if (!empty($query)) {
+                                ReportParams::clearCache($item_id);
+                            }
                             $message = 'Item actualizado exitosamente';
                             $message_type = 'success';
                             $action = 'list';
