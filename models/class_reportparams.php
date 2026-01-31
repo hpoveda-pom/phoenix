@@ -273,7 +273,7 @@ class ReportParams {
         
         if ($include_pipeline) {
             $query_reports_info .= "
-            LEFT JOIN pipelines e ON e.ReportsId = a.ReportsId";
+            LEFT JOIN pipelines e ON e.ReportsId = a.ReportsId AND e.Status = 1";
         } else {
             $query_reports_info .= "
             LEFT JOIN pipelines e ON e.ReportsId = a.ReportsId
