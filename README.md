@@ -11,7 +11,8 @@
 7. [Configuración de la Aplicación](#configuración-de-la-aplicación)
 8. [Estructura del Proyecto](#estructura-del-proyecto)
 9. [Características Principales](#características-principales)
-10. [Soporte](#soporte)
+10. [SQL Server en Linux (producción)](#sql-server-en-linux-producción)
+11. [Soporte](#soporte)
 
 ---
 
@@ -50,7 +51,7 @@ Phoenix funciona correctamente en todas estas arquitecturas.
 ### Bases de Datos Soportadas
 Phoenix soporta conexiones a múltiples tipos de bases de datos:
 - **MySQL / MariaDB** - Soporte completo
-- **SQL Server** - Soporte completo
+- **SQL Server** - Soporte completo (en Linux requiere [Microsoft ODBC Driver for SQL Server](#sql-server-en-linux-producción))
 - **ClickHouse** - Soporte completo
 - **Oracle** - Requiere Oracle Instant Client
 
@@ -185,6 +186,30 @@ sudo systemctl restart httpd
 # Debian
 sudo systemctl restart apache2
 ```
+
+### Instalación de Microsoft ODBC Driver for SQL Server (Opcional)
+
+Solo es necesario si usas conexiones a **SQL Server** en un servidor **Linux**. En Windows el driver suele estar ya disponible; en Linux la extensión PHP `pdo_sqlsrv` depende del driver ODBC instalado en el sistema.
+
+**Debian / Ubuntu:**
+
+```bash
+curl https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+sudo apt-get update
+sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+```
+
+*(En Ubuntu 20.04 usar `20.04` en la URL del repositorio.)*
+
+**RHEL / CentOS / Rocky:**
+
+```bash
+curl https://packages.microsoft.com/config/rhel/8/prod.repo | sudo tee /etc/yum.repos.d/mssql-release.repo
+sudo ACCEPT_EULA=Y dnf install -y msodbcsql18
+```
+
+Reiniciar Apache (o PHP-FPM) tras la instalación. Para comprobar la conectividad, usar el script de diagnóstico en `tests/sqlserver_diagnostics.php`.
 
 ### Configurar Firewall
 
@@ -385,6 +410,7 @@ phoenix/
 ├── models/          # Modelos de datos
 ├── scripts/         # Scripts de mantenimiento
 ├── sql/             # Scripts SQL de base de datos
+├── tests/           # Scripts de diagnóstico (SQL Server, etc.)
 ├── tools/            # Herramientas adicionales
 ├── views/           # Vistas y plantillas
 ├── config.php       # Configuración principal
@@ -428,6 +454,26 @@ phoenix/
 
 ---
 
+## SQL Server en Linux (producción)
+
+En entornos **Linux**, la extensión PHP `pdo_sqlsrv` requiere el **Microsoft ODBC Driver for SQL Server** instalado en el servidor. Sin él, las conexiones a SQL Server fallan con mensajes como *"This extension requires the Microsoft ODBC Driver for SQL Server"* o *"ODBC: could not find driver"*. En Windows el driver suele estar ya disponible; en Linux hay que instalarlo (ver [Instalación de Microsoft ODBC Driver for SQL Server](#instalación-de-microsoft-odbc-driver-for-sql-server-opcional)).
+
+### Requisito
+- Instalar el driver ODBC en el servidor y reiniciar Apache o PHP-FPM después.
+
+### Diagnóstico
+Script de comprobación (sin usar la UI): `tests/sqlserver_diagnostics.php`
+
+- Uso: `https://tu-dominio/phoenix/tests/sqlserver_diagnostics.php`
+- Opcional: `?id=8` para probar solo la conexión con ID 8.
+
+Muestra versión de PHP, extensiones cargadas, estado TCP (host:puerto) y resultado de `class_connSqlServer` y `pdo_sqlsrv` directo para cada conexión SQL Server de la tabla `connections`. Tras instalar el driver, deberías ver **Conexión OK** cuando el servidor SQL sea alcanzable.
+
+### Nota sobre hostnames
+Si una conexión usa un hostname de desarrollo (por ejemplo `SRV-DESA\SQLEXPRESS`), en producción puede fallar con *"Temporary failure in name resolution"*: el servidor Linux no resuelve ese nombre. Es esperado si ese SQL Server solo existe en la red de desarrollo; en producción usar la conexión que apunte al host/IP accesible desde el servidor (por ejemplo una IP como 192.168.100.241).
+
+---
+
 ## Soporte
 
 Para más información o soporte técnico, contactar al equipo de desarrollo.
@@ -435,4 +481,4 @@ Para más información o soporte técnico, contactar al equipo de desarrollo.
 ---
 
 **Versión:** 1.0  
-**Última actualización:** 2024
+**Última actualización:** 2025

@@ -55,6 +55,7 @@ if (isset($_GET['file_path'])) {
 }
 
 $ReportsId = null;
+$PipelinesId = isset($_GET['PipelinesId']) ? intval($_GET['PipelinesId']) : 0;
 if (isset($_GET['Id'])) {
   $ReportsId = $_GET['Id'];
 }
@@ -96,11 +97,63 @@ $filter_results = $params['filter_results'];
 $groupby_results = $params['groupby_results'];
 $sumby_results = $params['sumby_results'];
 $orderby_results = $params['orderby_results'];
-// Obtener información del reporte usando la clase centralizada (con cache)
-// data.php necesita información de pipeline, así que usamos include_pipeline = true
-$row_reports_info = ReportParams::getReportInfo($ReportsId, true);
+
+// Obtener información del reporte
+$row_reports_info = null;
+
+// action=pipeline con PipelinesId: cargar TODO directo desde pipelines+reports (evita problemas de join/cache)
+if ($action === 'pipeline' && $PipelinesId > 0) {
+  global $conn_phoenix;
+  $q = "SELECT p.ConnSource, p.TableSource, p.SchemaCreate, p.TableCreate, p.TableTruncate, p.TimeStamp, p.RecordsAlert,
+        r.ReportsId, r.Title, r.ConnectionId, r.Query, r.CategoryId,
+        b.Title AS Category, c.FullName, d.Connector AS conn_connector, d.Schema AS conn_schema, d.Title AS conn_title
+        FROM pipelines p
+        INNER JOIN reports r ON r.ReportsId = p.ReportsId
+        LEFT JOIN category b ON b.CategoryId = r.CategoryId
+        LEFT JOIN users c ON c.UsersId = r.UsersId
+        LEFT JOIN connections d ON d.ConnectionId = r.ConnectionId
+        WHERE p.PipelinesId = " . intval($PipelinesId) . " AND p.Status = 1 AND r.Status = 1";
+  $res = isset($conn_phoenix) ? $conn_phoenix->query($q) : null;
+  if ($res && $res->num_rows > 0) {
+    $row_reports_info = $res->fetch_assoc();
+    $row_reports_info['PipelineStatus'] = 1;
+    $ReportsId = $row_reports_info['ReportsId'];
+  } else {
+    $r = class_Recordset(1, $q, null, null, 1);
+    if (!empty($r['data'][0])) {
+      $row_reports_info = $r['data'][0];
+      $row_reports_info['PipelineStatus'] = 1;
+      $ReportsId = $row_reports_info['ReportsId'];
+    }
+  }
+}
+
+// Si no se cargó por PipelinesId, usar getReportInfo normal
+if (!$row_reports_info) {
+  if ($PipelinesId > 0 && $action === 'pipeline') {
+    $q2 = "SELECT ReportsId FROM pipelines WHERE PipelinesId = " . intval($PipelinesId);
+    $r2 = class_Recordset(1, $q2, null, null, 1);
+    if (!empty($r2['data'][0]['ReportsId'])) {
+      $ReportsId = intval($r2['data'][0]['ReportsId']);
+    }
+  }
+  $row_reports_info = ReportParams::getReportInfo($ReportsId, true);
+}
 
 if (!$row_reports_info) {
+  if ($action == "pipeline") {
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Pipeline - Error</title>';
+    echo '<style>body{font-family:monospace;padding:20px;background:#1a1a2e;color:#eee;} .err{color:#f87171;} pre{background:#16213e;padding:15px;}</style></head><body><pre>';
+    echo '<span class="err">[ERROR] No se encontró pipeline o reporte.</span>'."\n\n";
+    echo "Usaste: Id=".htmlspecialchars($_GET['Id'] ?? '-').", PipelinesId=".htmlspecialchars($_GET['PipelinesId'] ?? '-')."\n\n";
+    if ($PipelinesId > 0) {
+      echo "El PipelinesId=".$PipelinesId." no existe, está inactivo, o su ReportsId no tiene reporte válido.\n";
+      echo "Ejecuta en MySQL: SELECT * FROM pipelines WHERE PipelinesId=".$PipelinesId.";\n";
+    }
+    echo '</pre></body></html>';
+    exit;
+  }
   if ($action != "datatables") {
     echo '<div class="alert alert-subtle-danger" role="alert">Error, no ha seleccionado un reporte válido!</div>';
     exit;
@@ -210,17 +263,51 @@ if ($action == "api") {
 
 //Pipelines
 if ($action == "pipeline") {
+  header('Content-Type: text/html; charset=utf-8');
+  echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ejecución Pipeline</title>';
+  echo '<style>body{font-family:monospace;padding:20px;background:#1a1a2e;color:#eee;} .ok{color:#4ade80;} .err{color:#f87171;} pre{background:#16213e;padding:15px;border-radius:8px;}</style></head><body><h3>Pipeline - Reporte ID '.intval($ReportsId).'</h3><pre>';
 
   $msg = null;
 
-    
-    $msg .= "[ID: ".$row_reports_info['ReportsId']."]";
+  if (empty($ReportsId)) {
+    echo '<span class="err">[ERROR] No se especificó Id de reporte. Usa: data.php?action=pipeline&Id=XXX</span>';
+    echo '</pre></body></html>';
+    exit;
+  }
+
+  $msg .= "[ID: ".$row_reports_info['ReportsId']."]";
+
+  if (!isset($row_reports_info['PipelineStatus']) || !$row_reports_info['PipelineStatus']) {
+    echo '<span class="err">[ERROR] No se encontró pipeline activo.</span>'."\n\n";
+    echo "URL recibida: Id=".htmlspecialchars($_GET['Id'] ?? '-').", PipelinesId=".htmlspecialchars($_GET['PipelinesId'] ?? '-')."\n\n";
+    echo "Prueba con: data.php?action=pipeline&PipelinesId=1\n";
+    echo "O verifica en la base de datos: SELECT PipelinesId, ReportsId, Status FROM pipelines;";
+    echo '</pre></body></html>';
+    exit;
+  }
 
   if ($row_reports_info['PipelineStatus']) {
 
     $pipeline_title = $row_reports_info['ReportsId'].'. '.$row_reports_info['Title'];
 
     $pipeline_data  = class_Recordset($row_reports_info['ConnectionId'], $row_reports_info['Query'], $filter_results, $groupby_results, null);
+
+    if (!empty($pipeline_data['msg_error'])) {
+      echo '<span class="err">[ERROR] Consulta SQL: '.htmlspecialchars($pipeline_data['msg_error']).'</span>';
+      echo '</pre></body></html>';
+      exit;
+    }
+    if (empty($pipeline_data['headers'])) {
+      echo '<span class="err">[ERROR] La consulta no devolvió columnas. Revisa el reporte.</span>';
+      echo '</pre></body></html>';
+      exit;
+    }
+    if (empty($pipeline_data['data'])) {
+      echo '<span class="err">[AVISO] La consulta devolvió 0 registros. No hay datos para insertar.</span>'."\n";
+      echo 'Ejecuta el reporte para verificar que la consulta SQL devuelve datos.';
+      echo '</pre></body></html>';
+      exit;
+    }
 
       $exec_timeend = microtime(true);
       $ExecTime = $exec_timeend - $exec_timestart;
@@ -292,13 +379,12 @@ if ($action == "pipeline") {
     class_lastExecution($row_reports_info['ReportsId']);
 
     $LogType = 'Pipeline';
-  }else{
-    $msg .= "[Error: El reporte ".$row_reports_info['ReportsId']." no se encuentra definido como pipeline o está inactivo.]";
   }
 
   $msg .= "[".$pipeline_source."]";
-
-  echo "[".date("Y-m-d H:i:s")."]".$msg."\n";
+  echo '<span class="ok">['.date("Y-m-d H:i:s").']</span> '.htmlspecialchars($msg);
+  echo '</pre></body></html>';
+  exit;
 }
 
 //show HTML report

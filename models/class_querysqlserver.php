@@ -193,8 +193,129 @@ function class_querySqlServer($ConnectionId, $Query, $ArrayFilter, $array_groupb
         $query_order_by = " ORDER BY " . $OrderBy;
     }
     
+    // Helpers para manejar CTE y ORDER BY de alto nivel en SQL Server
+    $splitSqlServerCte = function($sql) {
+        $trimmed = ltrim($sql);
+        if (!preg_match('/^;?\s*WITH\b/i', $trimmed)) {
+            return null;
+        }
+        
+        $len = strlen($trimmed);
+        $depth = 0;
+        $in_string = false;
+        $string_char = '';
+        
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $trimmed[$i];
+            
+            if ($in_string) {
+                if ($ch === $string_char) {
+                    // Escapar comillas dobles en strings tipo ''
+                    if ($string_char === "'" && $i + 1 < $len && $trimmed[$i + 1] === "'") {
+                        $i++;
+                        continue;
+                    }
+                    $in_string = false;
+                }
+                continue;
+            }
+            
+            if ($ch === "'" || $ch === '"') {
+                $in_string = true;
+                $string_char = $ch;
+                continue;
+            }
+            
+            if ($ch === '(') {
+                $depth++;
+                continue;
+            }
+            if ($ch === ')') {
+                if ($depth > 0) {
+                    $depth--;
+                }
+                continue;
+            }
+            
+            if ($depth === 0) {
+                $rest = substr($trimmed, $i);
+                if (preg_match('/^SELECT\b/i', $rest)) {
+                    $cte = rtrim(substr($trimmed, 0, $i));
+                    $main = ltrim(substr($trimmed, $i));
+                    return [$cte, $main];
+                }
+            }
+        }
+        
+        return null;
+    };
+    
+    $stripTopLevelOrderBy = function($sql) {
+        $len = strlen($sql);
+        $depth = 0;
+        $in_string = false;
+        $string_char = '';
+        $order_pos = null;
+        
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $sql[$i];
+            
+            if ($in_string) {
+                if ($ch === $string_char) {
+                    if ($string_char === "'" && $i + 1 < $len && $sql[$i + 1] === "'") {
+                        $i++;
+                        continue;
+                    }
+                    $in_string = false;
+                }
+                continue;
+            }
+            
+            if ($ch === "'" || $ch === '"') {
+                $in_string = true;
+                $string_char = $ch;
+                continue;
+            }
+            
+            if ($ch === '(') {
+                $depth++;
+                continue;
+            }
+            if ($ch === ')') {
+                if ($depth > 0) {
+                    $depth--;
+                }
+                continue;
+            }
+            
+            if ($depth === 0) {
+                $rest = substr($sql, $i);
+                if (preg_match('/^ORDER\s+BY\b/i', $rest)) {
+                    $order_pos = $i;
+                }
+            }
+        }
+        
+        if ($order_pos !== null) {
+            return rtrim(substr($sql, 0, $order_pos));
+        }
+        
+        return rtrim($sql);
+    };
+    
+    $cte_parts = $splitSqlServerCte($Query);
+    $cte_prefix = '';
+    $main_query = $Query;
+    if ($cte_parts) {
+        $cte_prefix = rtrim($cte_parts[0]) . " ";
+        $main_query = $cte_parts[1];
+    }
+    
+    // Remover ORDER BY de alto nivel en subconsultas para SQL Server
+    $main_query = $stripTopLevelOrderBy($main_query);
+    
     // Construir query base
-    $base_query = "SELECT tb.* FROM (" . $Query . ") AS tb " . $query_where . $query_order_by;
+    $base_query = $cte_prefix . "SELECT tb.* FROM (" . $main_query . ") AS tb " . $query_where . $query_order_by;
 
     // Group By or Details
     if ($array_groupby && !empty($GroupBy) && !empty($select_GroupBy)) {
@@ -209,20 +330,20 @@ function class_querySqlServer($ConnectionId, $Query, $ArrayFilter, $array_groupb
         // OrderBy ya viene formateado con corchetes desde data.php para SQL Server
         $groupby_order_by = !empty($OrderBy) ? " ORDER BY " . $OrderBy : " ORDER BY Cantidad DESC";
         
-        $query = "SELECT " . $select_fields . " FROM (" . $Query . ") AS tb " . $query_where . " " . $GroupBy . $groupby_order_by;
+        $query = $cte_prefix . "SELECT " . $select_fields . " FROM (" . $main_query . ") AS tb " . $query_where . " " . $GroupBy . $groupby_order_by;
         
         // Agregar paginación si es necesario
         if ($start !== null && $length !== null) {
             $query .= " " . $query_limit;
         } elseif ($Limit && empty($query_limit)) {
             // Si hay Limit pero no start/length, usar TOP
-            $query = "SELECT TOP " . intval($Limit) . " " . substr($query, 7); // Remover "SELECT " y agregar "SELECT TOP N "
+            $query = $cte_prefix . "SELECT TOP " . intval($Limit) . " " . $select_fields . " FROM (" . $main_query . ") AS tb " . $query_where . " " . $GroupBy . $groupby_order_by;
         }
     } else {
         // Query sin GroupBy
         if ($Limit && $start === null && $length === null) {
             // Si solo hay Limit, usar TOP
-            $query = "SELECT TOP " . intval($Limit) . " tb.* FROM (" . $Query . ") AS tb " . $query_where . $query_order_by;
+            $query = $cte_prefix . "SELECT TOP " . intval($Limit) . " tb.* FROM (" . $main_query . ") AS tb " . $query_where . $query_order_by;
         } else {
             $query = $base_query;
             if ($start !== null && $length !== null) {
@@ -281,9 +402,9 @@ function class_querySqlServer($ConnectionId, $Query, $ArrayFilter, $array_groupb
     $total_rows = 0;
     if ($array_groupby && !empty($GroupBy) && !empty($select_GroupBy)) {
         $select_GroupBy_clean = rtrim($select_GroupBy, ',');
-        $query_totalrows = "SELECT COUNT(*) AS TOTAL_ROWS FROM (SELECT " . $select_GroupBy_clean . " FROM (" . $Query . ") AS tb " . $query_where . " " . $GroupBy . ") AS grouped";
+        $query_totalrows = $cte_prefix . "SELECT COUNT(*) AS TOTAL_ROWS FROM (SELECT " . $select_GroupBy_clean . " FROM (" . $main_query . ") AS tb " . $query_where . " " . $GroupBy . ") AS grouped";
     } else {
-        $query_totalrows = "SELECT COUNT(*) AS TOTAL_ROWS FROM (" . $Query . ") AS tb " . $query_where;
+        $query_totalrows = $cte_prefix . "SELECT COUNT(*) AS TOTAL_ROWS FROM (" . $main_query . ") AS tb " . $query_where;
     }
     
     try {
