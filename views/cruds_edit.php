@@ -103,28 +103,31 @@ if ($action == "update" && $forms_id == 'cruds_edit') {
     $Query = $_POST['Query'];
   }
   
-  // Escapar el Query para evitar problemas con comillas en SQL
-  // Usar addslashes para escapar comillas simples y dobles
-  $Query_escaped = addslashes($Query);
+  // Escapar el Query correctamente usando mysqli_real_escape_string
+  // Esto soporta cualquier query con comillas simples, dobles, y caracteres especiales
+  $conn = class_Connections(1);
+  $Query_escaped = $conn->real_escape_string($Query);
 
-    $qry_upd_reports = "UPDATE reports a SET
-        a.Title = '".$Title."',
-        a.Description = '".$Description."',
-        a.CategoryId = ".$CategoryId.",
-        a.UsersId = ".$UsersId.",
-        a.TypeId = ".$TypeId.",
-        a.ParentId = ".$ParentId.",
-        a.ConnectionId = ".$ConnectionId.",
-        a.Query = '".$Query_escaped."',
-        a.Order = ".$Order.",
-        a.PipelinesId = ".$PipelinesId.",
-        a.MaskingStatus = ".$MaskingStatus.",
-        a.TotalAxisX = ".$TotalAxisX.",
-        a.TotalAxisY = ".$TotalAxisY.",
-        a.LayoutGridClass = '".$LayoutGridClass."',
-        a.UserUpdated = ".$UserUpdated.",
-        a.Status = ".$Status."
-    WHERE a.ReportsId = ".$ReportsId;
+    // Usar comillas simples para el string PHP y comillas dobles para el Query en SQL
+    // Esto permite que el Query tenga comillas simples sin problemas (como '%WHATSAPP%')
+    $qry_upd_reports = 'UPDATE reports a SET
+        a.Title = \''.addslashes($Title).'\',
+        a.Description = \''.addslashes($Description).'\',
+        a.CategoryId = '.$CategoryId.',
+        a.UsersId = '.$UsersId.',
+        a.TypeId = '.$TypeId.',
+        a.ParentId = '.$ParentId.',
+        a.ConnectionId = '.$ConnectionId.',
+        a.Query = "'.$Query_escaped.'",
+        a.Order = '.$Order.',
+        a.PipelinesId = '.$PipelinesId.',
+        a.MaskingStatus = '.$MaskingStatus.',
+        a.TotalAxisX = '.$TotalAxisX.',
+        a.TotalAxisY = '.$TotalAxisY.',
+        a.LayoutGridClass = \''.addslashes($LayoutGridClass).'\',
+        a.UserUpdated = '.$UserUpdated.',
+        a.Status = '.$Status.'
+    WHERE a.ReportsId = '.$ReportsId;
 
     $upd_reports = class_queryMysqliExe(1, $qry_upd_reports);
 

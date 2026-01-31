@@ -92,7 +92,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $order = intval($_POST['order'] ?? 0);
             $type_id = intval($_POST['type_id'] ?? 1);
             $connection_id = intval($_POST['connection_id'] ?? 0);
-            $query = trim($_POST['query'] ?? '');
+            // Capturar el query del POST - CRÍTICO: capturar directamente sin procesar
+            // El query puede contener cualquier texto, incluyendo espacios, saltos de línea, etc.
+            // IMPORTANTE: Usar $_POST['query'] directamente, sin ninguna conversión
+            $query = isset($_POST['query']) ? $_POST['query'] : '';
+            
+            // DEBUG: Log del query recibido
+            if (isset($_POST['query'])) {
+                error_log("DEBUG Query POST - Raw length: " . strlen($_POST['query']) . ", Type: " . gettype($_POST['query']) . ", First 100 chars: " . substr($_POST['query'], 0, 100));
+            }
+            
             $query_id = !empty($_POST['query_id']) ? intval($_POST['query_id']) : 0;
             $version = trim($_POST['version'] ?? '');
             $layout_grid_class = trim($_POST['layout_grid_class'] ?? '');
@@ -109,6 +118,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = 'El título y la categoría son obligatorios';
                 $message_type = 'danger';
             } else {
+                // Preservar el Query existente SOLO si NO se envió en el POST
+                // Si el campo 'query' NO está presente en $_POST, significa que no se envió
+                // Si está presente (incluso vacío), usar el valor enviado SIN PROCESAR
+                if ($item_id > 0 && !isset($_POST['query'])) {
+                    // El campo query no se envió en el POST, preservar el existente
+                    $stmt_existing = $conn_phoenix->prepare("SELECT Query FROM reports WHERE ReportsId = ?");
+                    if ($stmt_existing) {
+                        $stmt_existing->bind_param('i', $item_id);
+                        $stmt_existing->execute();
+                        $result_existing = $stmt_existing->get_result();
+                        if ($result_existing && $result_existing->num_rows > 0) {
+                            $row_existing = $result_existing->fetch_assoc();
+                            $existing_query = isset($row_existing['Query']) && $row_existing['Query'] !== null ? $row_existing['Query'] : '';
+                            if (!empty($existing_query)) {
+                                $query = $existing_query;
+                            }
+                        }
+                        $stmt_existing->close();
+                    }
+                }
+                
+                // NO procesar el query si viene del POST - usarlo tal cual
+                // Solo asegurar que sea string, pero SIN convertir '0' a vacío
+                // El query puede ser cualquier texto, incluyendo '0' como texto válido
+                if ($query === null) {
+                    $query = '';
+                } else {
+                    // Convertir a string pero preservar el contenido exacto
+                    $query = (string)$query;
+                }
+                
                 // Para campos opcionales, usar 0 en lugar de NULL para evitar problemas con bind_param
                 // La base de datos puede manejar 0 como valor por defecto o podemos usar COALESCE
                 $query_id_final = ($query_id == 0) ? 0 : $query_id;
@@ -124,19 +164,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $message = 'Error al preparar la consulta: ' . $conn_phoenix->error;
                         $message_type = 'danger';
                     } else {
-                        $stmt->bind_param('ssiiiiisssssiiiiiii', $title, $description, $category_id, $order, $type_id, $connection_id, $query, $query_id_final, $version, $layout_grid_class, $periodic, $convention_status, $masking_status, $status, $total_axis_x_final, $total_axis_y_final, $pipelines_id_final, $UsersId, $item_id);
-                        if ($stmt->execute()) {
-                            // Limpiar el caché del reporte si se actualizó el query
-                            if (!empty($query)) {
-                                ReportParams::clearCache($item_id);
+                        // USAR EL MISMO ENFOQUE QUE INSERT (que funciona correctamente)
+                        // En INSERT se usa $query directamente, hacer lo mismo aquí
+                        // El $query ya fue capturado del POST arriba (línea 97)
+                        // Si no se envió en POST, ya se preservó el existente (líneas 120-135)
+                        
+                        $stmt->bind_param('ssiiiiissssiiiiiiii', $title, $description, $category_id, $order, $type_id, $connection_id, $query, $query_id_final, $version, $layout_grid_class, $periodic, $convention_status, $masking_status, $status, $total_axis_x_final, $total_axis_y_final, $pipelines_id_final, $UsersId, $item_id);
+                            if ($stmt->execute()) {
+                                // Limpiar el caché del reporte si se actualizó el query
+                                if (!empty($query)) {
+                                    ReportParams::clearCache($item_id);
+                                }
+                                $message = 'Item actualizado exitosamente';
+                                $message_type = 'success';
+                                $action = 'list';
+                            } else {
+                                $message = 'Error al guardar: ' . $stmt->error;
+                                $message_type = 'danger';
                             }
-                            $message = 'Item actualizado exitosamente';
-                            $message_type = 'success';
-                            $action = 'list';
-                        } else {
-                            $message = 'Error al guardar: ' . $stmt->error;
-                            $message_type = 'danger';
-                        }
                         $stmt->close();
                     }
                 } else {
